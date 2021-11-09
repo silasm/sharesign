@@ -41,9 +41,9 @@ impl Error for SharkSignError {
 
 // configuration for generating a key
 pub struct KeyConfig {
-    kind: Id,
-    size: u32,
-    digest: Option<MessageDigest>,
+    pub kind: Id,
+    pub size: u32,
+    pub digest: Option<MessageDigest>,
 }
 
 pub fn generate(config: &KeyConfig) -> Result<Vec<u8>, SharkSignError> {
