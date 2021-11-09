@@ -75,8 +75,37 @@ pub fn sign(config: &KeyConfig, pem: &[u8], payload: &[u8]) -> Result<Vec<u8>, S
 }
 
 #[cfg(test)]
-mod tests {
+pub fn verify(config: &KeyConfig, pem: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
     use openssl::sign::Verifier;
+
+    let rsa = Rsa::private_key_from_pem(pem)?;
+    let key = PKey::from_rsa(rsa)?;
+    match config.digest {
+        Some(digest) => {
+            let mut verifier = Verifier::new(digest, &key)?;
+            verifier.update(payload)?;
+            if verifier.verify(signature)? {
+                Ok(())
+            }
+            else {
+                Err("signature did not validate".to_owned())?
+            }
+        },
+        None => {
+            let mut verifier = Verifier::new_without_digest(&key)?;
+            if verifier.verify_oneshot(signature, payload)? {
+                Ok(())
+            }
+            else {
+                Err("signature did not validate".to_owned())?
+            }
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
     use super::*;
 
     #[test]
@@ -100,10 +129,7 @@ mod tests {
 
         let pem = generate(&config).unwrap();
         let signature = sign(&config, &pem, &payload).unwrap();
-        let rsa = Rsa::private_key_from_pem(&pem.as_slice()).unwrap();
-        let key = PKey::from_rsa(rsa).unwrap();
-        let mut verifier = Verifier::new_without_digest(&key).unwrap();
-        assert!(verifier.verify_oneshot(&signature, &payload).unwrap());
+        verify(&config, &pem, &payload, &signature).unwrap();
     }
 
     #[test]
@@ -117,10 +143,6 @@ mod tests {
 
         let pem = generate(&config).unwrap();
         let signature = sign(&config, &pem, &payload).unwrap();
-        let rsa = Rsa::private_key_from_pem(&pem.as_slice()).unwrap();
-        let key = PKey::from_rsa(rsa).unwrap();
-        let mut verifier = Verifier::new(config.digest.unwrap(), &key).unwrap();
-        verifier.update(&payload).unwrap();
-        assert!(verifier.verify(&signature).unwrap());
+        verify(&config, &pem, &payload, &signature).unwrap();
     }
 }

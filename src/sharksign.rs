@@ -25,7 +25,7 @@ fn recover(shares_needed: u8, shares: &[Share]) -> Result<Vec<u8>, Box<dyn Error
     Ok(sharks.recover(shares)?)
 }
 
-pub fn sign(shares_needed: u8, shares: &[Share], payload: &[u8], config: keys::KeyConfig) -> Result<Signature, Box<dyn Error>> {
+pub fn sign(shares_needed: u8, shares: &[Share], payload: &[u8], config: &keys::KeyConfig) -> Result<Signature, Box<dyn Error>> {
     let pem = recover(shares_needed, shares)?;
     let signature = keys::sign(&config, pem.as_slice(), payload)?;
     Ok(Signature{
@@ -41,9 +41,6 @@ pub fn encryptshare(_share: Share, _pubkey: PubKey) -> Encrypted {
 
 #[cfg(test)]
 mod tests {
-    use openssl::sign::Verifier;
-    use openssl::rsa::Rsa;
-    use openssl::pkey::PKey;
     use hex;
     use std::convert::TryFrom;
     use super::*;
@@ -58,7 +55,7 @@ mod tests {
         ].map(|x| Share::try_from(hex::decode(x).unwrap().as_slice()).unwrap())
     }
 
-   #[test]
+    #[test]
     fn test_generate_shares_rsa_2048() {
         let config = keys::KeyConfig {
             kind: openssl::pkey::Id::RSA,
@@ -87,13 +84,9 @@ mod tests {
         let shares = static_shares_3_5();
         let shares_needed = 3;
         let payload = "Hello, World!".to_owned().into_bytes();
-        let signature = sign(shares_needed, &shares, &payload, config).unwrap();
+        let signature = sign(shares_needed, &shares, &payload, &config).unwrap();
 
         let pem = recover(3, &shares).unwrap();
-        let rsa = Rsa::private_key_from_pem(&pem.as_slice()).unwrap();
-        let key = PKey::from_rsa(rsa).unwrap();
-        let mut verifier = Verifier::new_without_digest(&key).unwrap();
-        assert!(verifier.verify_oneshot(&signature.signature, &payload).unwrap());
-
+        keys::verify(&config, &pem, &payload, &signature.signature).unwrap();
     }
 }
