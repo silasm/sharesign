@@ -1,61 +1,24 @@
-use std::fmt;
-use std::error::Error;
+use std::convert::TryFrom;
 
 use openssl;
+use openssl::hash::MessageDigest as MD;
 use openssl::rsa::Rsa;
-use openssl::pkey::{PKey, Id};
+use openssl::pkey::PKey;
 use openssl::sign::Signer;
-use openssl::hash::MessageDigest;
-use openssl::error::ErrorStack;
 
-#[derive(Debug)]
-pub enum SharkSignError {
-    StringError(String),
-    OpensslError(ErrorStack),
-}
-
-impl fmt::Display for SharkSignError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SharkSignError::StringError(e) => write!(f, "Internal Error: {}", e),
-            SharkSignError::OpensslError(e) => write!(f, "SSL Error: {}", e),
-        }
-    }
-}
-
-impl From<String> for SharkSignError {
-    fn from(result: String) -> SharkSignError {
-        SharkSignError::StringError(result)
-    }
-}
-
-impl From<ErrorStack> for SharkSignError {
-    fn from(result: ErrorStack) -> SharkSignError {
-        SharkSignError::OpensslError(result)
-    }
-}
-
-impl Error for SharkSignError {
-    
-}
-
-// configuration for generating a key
-pub struct KeyConfig {
-    pub kind: Id,
-    pub size: u32,
-    pub digest: Option<MessageDigest>,
-}
+use super::data::{KeyConfig, KeyKind, MessageDigest};
+use super::error::{SharkSignError};
 
 pub fn generate(config: &KeyConfig) -> Result<Vec<u8>, SharkSignError> {
     match config.kind {
-        openssl::pkey::Id::RSA => Ok(Rsa::generate(config.size)?.private_key_to_pem()?),
+        KeyKind::RSA => Ok(Rsa::generate(config.size)?.private_key_to_pem()?),
         _ => Err(format!("key generation not implemented for key kind: {:?}", config.kind))?
     }
 }
 
 pub fn sign(config: &KeyConfig, pem: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     let key = match config.kind {
-        openssl::pkey::Id::RSA => {
+        KeyKind::RSA => {
             let rsa = Rsa::private_key_from_pem(pem)?;
             Ok(PKey::from_rsa(rsa)?)
         },
@@ -63,7 +26,7 @@ pub fn sign(config: &KeyConfig, pem: &[u8], payload: &[u8]) -> Result<Vec<u8>, S
     }?;
     match config.digest {
         Some(digest) => {
-            let mut signer = Signer::new(digest, &key)?;
+            let mut signer = Signer::new(MD::try_from(digest)?, &key)?;
             signer.update(payload)?;
             Ok(signer.sign_to_vec()?)
         },
@@ -82,7 +45,7 @@ pub fn verify(config: &KeyConfig, pem: &[u8], payload: &[u8], signature: &[u8]) 
     let key = PKey::from_rsa(rsa)?;
     match config.digest {
         Some(digest) => {
-            let mut verifier = Verifier::new(digest, &key)?;
+            let mut verifier = Verifier::new(MD::try_from(digest)?, &key)?;
             verifier.update(payload)?;
             if verifier.verify(signature)? {
                 Ok(())
@@ -111,7 +74,7 @@ mod tests {
     #[test]
     fn generate_rsa_2048() {
         let config = KeyConfig {
-            kind: openssl::pkey::Id::RSA,
+            kind: KeyKind::RSA,
             size: 2048,
             digest: None,
         };
@@ -121,7 +84,7 @@ mod tests {
     #[test]
     fn sign_and_verify_rsa_2048() {
         let config = KeyConfig {
-            kind: openssl::pkey::Id::RSA,
+            kind: KeyKind::RSA,
             size: 2048,
             digest: None,
         };
@@ -135,9 +98,9 @@ mod tests {
     #[test]
     fn sign_and_verify_rsa_2048_sha256() {
         let config = KeyConfig {
-            kind: openssl::pkey::Id::RSA,
+            kind: KeyKind::RSA,
             size: 2048,
-            digest: Some(MessageDigest::sha256()),
+            digest: Some(MessageDigest::SHA256),
         };
         let payload = Vec::<u8>::from("this is another string");
 

@@ -1,19 +1,21 @@
 use std::error::Error;
 use sharks::{Sharks, Share};
 
-mod keys;
+pub mod data;
+pub mod error;
+pub mod openssl;
+use self::openssl as tls;
 
 // result of signing a payload
 pub struct Signature {
     signature: Vec<u8>
 }
-// public key for encrypting a share for distribution
-pub struct PubKey {}
+
 // dummy type for encrypted return
 pub struct Encrypted {}
 
-pub fn generate(num_shares: usize, shares_needed: u8, config: &keys::KeyConfig) -> Result<Vec<Share>, Box<dyn Error>> {
-    let key = keys::generate(&config)?;
+pub fn generate(num_shares: usize, shares_needed: u8, config: &data::KeyConfig) -> Result<Vec<Share>, Box<dyn Error>> {
+    let key = tls::generate(config)?;
     let sharks = Sharks(shares_needed);
     // TODO: replace RNG if needed using dealer_rng
     let dealer = sharks.dealer(key.as_slice());
@@ -25,15 +27,15 @@ fn recover(shares_needed: u8, shares: &[Share]) -> Result<Vec<u8>, Box<dyn Error
     Ok(sharks.recover(shares)?)
 }
 
-pub fn sign(shares_needed: u8, shares: &[Share], payload: &[u8], config: &keys::KeyConfig) -> Result<Signature, Box<dyn Error>> {
+pub fn sign(shares_needed: u8, shares: &[Share], payload: &[u8], config: &data::KeyConfig) -> Result<Signature, Box<dyn Error>> {
     let pem = recover(shares_needed, shares)?;
-    let signature = keys::sign(&config, pem.as_slice(), payload)?;
+    let signature = tls::sign(config, pem.as_slice(), payload)?;
     Ok(Signature{
         signature: signature,
     })
 }
 
-pub fn encryptshare(_share: Share, _pubkey: PubKey) -> Encrypted {
+pub fn encryptshare(_share: Share, _pubkey: data::PubKey) -> Encrypted {
     // pubkey_encrypt(Vec::from(&share).as_slice(), pubkey)
     assert!(false);
     return Encrypted {}
@@ -57,8 +59,8 @@ mod tests {
 
     #[test]
     fn test_generate_shares_rsa_2048() {
-        let config = keys::KeyConfig {
-            kind: openssl::pkey::Id::RSA,
+        let config = data::KeyConfig {
+            kind: data::KeyKind::RSA,
             size: 2048,
             digest: None,
         };
@@ -76,8 +78,8 @@ mod tests {
 
     #[test]
     fn test_sign_shares_rsa_2048() {
-        let config = keys::KeyConfig {
-            kind: openssl::pkey::Id::RSA,
+        let config = data::KeyConfig {
+            kind: data::KeyKind::RSA,
             size: 2048,
             digest: None,
         };
@@ -87,6 +89,6 @@ mod tests {
         let signature = sign(shares_needed, &shares, &payload, &config).unwrap();
 
         let pem = recover(3, &shares).unwrap();
-        keys::verify(&config, &pem, &payload, &signature.signature).unwrap();
+        tls::verify(&config, &pem, &payload, &signature.signature).unwrap();
     }
 }

@@ -2,44 +2,10 @@
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use actix_rt;
 // use json;
-use serde::{Serialize, Deserialize};
 // use serde_json;
 
 mod sharksign;
-
-/* #[derive(Serialize, Deserialize)] */
-struct SignRequest {
-    // to_be_signed: HashDigest<'a>,
-    // shareholders: Vec<KeyRef>,
-    // shares: Vec<sharks::Share>,
-    // signature: Option<Signature<'a>>,
-    // ctime: u64,
-    // expiration: u64,
-}
-
-/* #[derive(Serialize, Deserialize)] */
-struct ShareSubmit {
-    // to_be_signed: HashDigest<'a>,
-    // share: sharks::Share,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Signature {
-    // approvers: Vec<KeyRef>,
-    // hash: HashDigest<'a>,
-    // signature: &'a [u8],
-}
-
-#[derive(Serialize, Deserialize)]
-struct HashDigest {
-    // hasher: String,
-    // digest: &'a [u8],
-}
-
-#[derive(Serialize, Deserialize)]
-enum KeyRef {
-    
-}
+use sharksign::data;
 
 async fn startsign() -> impl Responder {
     HttpResponse::Ok().json(())
@@ -53,11 +19,11 @@ async fn submitshare(_req: web::HttpRequest) -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
-async fn showsign(_path: web::Path<(KeyRef, HashDigest)>) -> impl Responder {
+async fn showsign(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
-async fn showshares(_path: web::Path<(KeyRef, HashDigest)>) -> impl Responder {
+async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
@@ -69,11 +35,11 @@ async fn showkeys() -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
-async fn updatekey(_path: web::Path<KeyRef>) -> impl Responder {
+async fn updatekey(_path: web::Path<data::KeyRef>) -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
-async fn showkey(_path: web::Path<KeyRef>) -> impl Responder {
+async fn showkey(_path: web::Path<data::KeyRef>) -> impl Responder {
     HttpResponse::Ok().json(())
 }
 
