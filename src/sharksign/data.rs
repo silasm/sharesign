@@ -36,6 +36,7 @@ impl TryFrom<&[u8]> for Share {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum KeyKind {
     RSA,
+    Unknown, // just to get rid of "impossible match" warnings
 }
 
 impl TryFrom<openssl::pkey::Id> for KeyKind {
@@ -61,6 +62,7 @@ impl TryFrom<KeyKind> for openssl::pkey::Id {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum MessageDigest {
     SHA256,
+    Unknown, // just to get rid of "impossible match" warnings
 }
 
 impl TryFrom<openssl::hash::MessageDigest> for MessageDigest {
