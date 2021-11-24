@@ -1,0 +1,33 @@
+Sharksign: Manage Signing Keys with Shamir's Secret Sharing
+
+NOTE: This is at best a proof of concept.
+NOTE: I am neither a security professional nor a rust professional.
+
+Sharksign implements a server for the generation and use (for signing)
+of public/private keypairs where the private end is split into M parts
+such that N are needed to reconstruct the key.
+
+When keys are generated, the private key is split into M shares and
+these are distributed* alongside the public key.
+
+When something must be signed, a new request is submitted to the
+server with the data (or a hash thereof) to be signed.  Then shares
+associated with this data are submitted in turn to the server over a
+secure connection.  If the threshold (N) of shares needed to recover
+the key is reached, the key is recovered just long enough to sign the
+data, and the signature is made available for distribution.
+
+Some care has been / is being taken to minimize statefulness of the
+system.  Among other things, it should be possible for one Sharksign
+server to generate keyshares and a completely different Sharksign
+server to accept the same shares to generate signatures (provided the
+protocol remains the same between the two servers).
+
+* exact details of this process matter a lot for obvious reasons --
+keeping any one person from obtaining multiple shares -- and are still
+being hashed out.  The current thinking is that public keys (one for each
+generated share) will be submitted to the key generation process and used
+to encrypt each share for distribution to the intended shareholder. The
+server will remember the fingerprint for each public key and will thereby
+attest to those that can correlate those fingerprints with key owners that
+no additional shares have been distributed to any one individual.
