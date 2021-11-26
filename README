@@ -7,8 +7,19 @@ Sharksign implements a server for the generation and use (for signing)
 of public/private keypairs where the private end is split into M parts
 such that N are needed to reconstruct the key.
 
+The point being:
+* the signing key itself need not be stored on the signing server disk
+  at all, and only needs to be in memory for as long as is needed to
+  sign the payload
+* as long as shares are kept secret, N shareholders are required to
+  create a signature, so for N>1 you enforce "review" by an additional
+  party [1]
+* total annihilation of the server does not delete the key as it's
+  already backed up in a way that requires some collusion (N > 1) and
+  with some redundancy (M > N)
+
 When keys are generated, the private key is split into M shares and
-these are distributed* alongside the public key.
+these are distributed[2] alongside the public key.
 
 When something must be signed, a new request is submitted to the
 server with the data (or a hash thereof) to be signed.  Then shares
@@ -23,7 +34,13 @@ server to generate keyshares and a completely different Sharksign
 server to accept the same shares to generate signatures (provided the
 protocol remains the same between the two servers).
 
-* exact details of this process matter a lot for obvious reasons --
+[1] this is even stronger than similar schemes which e.g.  require
+signatures by multiple shareholders, given there's no way to trick the
+server into signing with fewer submissions than required since it
+physically can't regenerate the key to do so -- I doubt this is much
+of a selling point in practice, but it's interesting to note.
+
+[2] exact details of this process matter a lot for obvious reasons --
 keeping any one person from obtaining multiple shares -- and are still
 being hashed out.  The current thinking is that public keys (one for each
 generated share) will be submitted to the key generation process and used
