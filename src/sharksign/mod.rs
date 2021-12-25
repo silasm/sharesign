@@ -4,6 +4,7 @@ use sharks::{Sharks};
 pub mod data;
 pub mod error;
 pub mod openssl;
+pub mod pgp;
 use self::openssl as tls;
 
 // result of signing a payload
@@ -36,8 +37,8 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], config: &
     })
 }
 
-pub fn encrypt(pubkey: &data::PubKey, payload: &[u8]) -> Result<data::Encrypted, error::SharkSignError> {
-    Ok(tls::encrypt(pubkey, payload)?)
+pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<data::Encrypted, error::SharkSignError> {
+    Ok(pgp::encrypt(cert, payload)?)
 }
 
 #[cfg(test)]

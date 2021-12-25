@@ -51,12 +51,17 @@ async fn showsigns(state: web::Data<State>) -> impl Responder {
     HttpResponse::Ok().json(signs)
 }
 
-async fn submitshare(state: web::Data<State>, id: web::Path<ID>, share: web::Json<data::Share>) -> impl Responder {
+async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json<data::ShareSubmit>) -> impl Responder {
     let mut sign_requests = state.sign_requests.lock().unwrap();
     match sign_requests.get_mut(&*id) {
         Some(sign_request) => {
-            // TODO: any validation of the submitted share happens here
-            sign_request.submit_share((*share).clone());
+            /*
+               TODO: any validation of the submitted share happens here
+               To validate, use public key attached to the signature request
+               to validate a signature attached to the share object
+            */
+            
+            sign_request.submit_share(json.share.clone());
             (
                 Ok(web::Json(())),
                 http::StatusCode::OK,
@@ -94,8 +99,8 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
         &key_gen_request.key_config,
     )?;
     let mut encrypted_shares = data::KeyShares::new();
-    for (pubkey, share) in key_gen_request.approvers.iter().zip(shares.iter()) {
-        encrypted_shares.push(sharksign::encrypt(pubkey.clone(), &share.data).unwrap());
+    for (cert, share) in key_gen_request.approvers.iter().zip(shares.iter()) {
+        encrypted_shares.push(sharksign::encrypt(cert.clone().as_bytes(), &share.data).unwrap());
     }
     let id = get_id(&*key_gen_request);
     {
@@ -147,4 +152,41 @@ async fn main() -> std::io::Result<()> {
     .bind("127.0.0.1:9000")?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test};
+    use super::sharksign::test_data;
+    use serde_json::Value;
+
+    #[actix_rt::test]
+    async fn test_generate() {
+        let keygen = json!({
+            "keyConfig": {
+                "kind": "RSA",
+                "size": 2048,
+            },
+            "approvers": test_data::static_approvers_10(),
+            "sharesRequired": 3,
+        });
+        let state = web::Data::new(State {
+            sign_requests: Mutex::new(HashMap::<ID, data::SignRequest>::new()),
+            key_gen_requests: Mutex::new(HashMap::<ID, data::KeyShares>::new()),
+        });
+
+        let mut app = test::init_service(
+            App::new()
+                .app_data(state.clone())
+                .route("/", web::post().to(newkey)),
+        ).await;
+        // print!("{:#?}\n", keygen);
+        let req = test::TestRequest::post()
+            .uri("/")
+            .set_json(&keygen)
+            .to_request();
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+    }
 }

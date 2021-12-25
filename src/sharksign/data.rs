@@ -147,8 +147,8 @@ impl SignRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareSubmit {
-    to_be_signed: Vec<u8>,
-    share: Share,
+    pub to_be_signed: Vec<u8>,
+    pub share: Share,
 }
 
 #[derive(Serialize, Clone)]
@@ -197,7 +197,7 @@ pub struct HashDigest {
 #[serde(rename_all = "camelCase")]
 pub struct KeyGenRequest {
     pub key_config: KeyConfig,
-    pub approvers: Vec<PubKey>,
+    pub approvers: Vec<String>,
     pub shares_required: u8,
 }
 

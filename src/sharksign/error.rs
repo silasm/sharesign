@@ -1,4 +1,5 @@
 use std::fmt;
+use anyhow;
 use std::error::Error;
 use openssl::error::ErrorStack;
 use actix_web::{http, HttpResponse, dev::HttpResponseBuilder, ResponseError};
@@ -8,6 +9,8 @@ use serde_json::json;
 pub enum SharkSignErrorType {
     StringError(String),
     OpensslError(ErrorStack),
+    PgpError(anyhow::Error),
+    IOError(std::io::Error),
 }
 
 #[derive(Debug)]
@@ -28,6 +31,8 @@ impl fmt::Display for SharkSignError {
         match &self.err {
             SharkSignErrorType::StringError(e) => write!(f, "Internal Error {}: {}", self.status, e),
             SharkSignErrorType::OpensslError(e) => write!(f, "SSL Error {} : {}", self.status, e),
+            SharkSignErrorType::PgpError(e) => write!(f, "PGP Error {} : {}", self.status, e),
+            SharkSignErrorType::IOError(e) => write!(f, "I/O Error {} : {}", self.status, e),
         }
     }
 }
@@ -54,6 +59,24 @@ impl From<ErrorStack> for SharkSignError {
     fn from(result: ErrorStack) -> SharkSignError {
         SharkSignError {
             err: SharkSignErrorType::OpensslError(result),
+            status: http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<anyhow::Error> for SharkSignError {
+    fn from(result: anyhow::Error) -> SharkSignError {
+        SharkSignError {
+            err: SharkSignErrorType::PgpError(result),
+            status: http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<std::io::Error> for SharkSignError {
+    fn from(result: std::io::Error) -> SharkSignError {
+        SharkSignError {
+            err: SharkSignErrorType::IOError(result),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
