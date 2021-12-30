@@ -159,7 +159,6 @@ mod tests {
     use super::*;
     use actix_web::{test};
     use super::sharksign::test_data;
-    use serde_json::Value;
 
     #[actix_rt::test]
     async fn test_generate() {
@@ -168,7 +167,7 @@ mod tests {
                 "kind": "RSA",
                 "size": 2048,
             },
-            "approvers": test_data::static_approvers_10(),
+            "approvers": test_data::static_approvers_pub_10(),
             "sharesRequired": 3,
         });
         let state = web::Data::new(State {

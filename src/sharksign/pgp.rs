@@ -4,7 +4,6 @@ extern crate sequoia_openpgp as openpgp;
 // use openpgp::cert::prelude::*;
 use openpgp::serialize::stream::*;
 use openpgp::parse::{Parse};
-// use openpgp::policy::Policy;
 use openpgp::policy::StandardPolicy;
 
 use super::data::{Encrypted, KeyRef};
@@ -36,50 +35,97 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
     })
 }
 
-/*
 // only used by tests to verify that encryption works.
-// API has no decryption functions (encrypts only when distributing shares)
+// API has no decryption functions, and encrypts only when distributing shares
+// code ripped with minor changes from
+// https://docs.sequoia-pgp.org/sequoia_guide/chapter_02/index.html
 #[cfg(test)]
-pub fn decrypt(_config: &KeyConfig, pem: &[u8], encrypted: Encrypted) -> Result<Vec<u8>, SharkSignError> {
-    use openssl::encrypt::Decrypter;
-    use openssl::rsa::Padding;
+pub mod decrypt {
+    use std::io;
+    use super::*;
+    use openpgp::policy::Policy;
+    use openpgp::parse::stream::*;
+    use openpgp::types::*;
+    use openpgp::crypto::SessionKey;
+    
 
-    let rsa = Rsa::private_key_from_pem(pem)?;
-    let key = PKey::from_rsa(rsa)?;
-    let mut decrypter = Decrypter::new(&key)?;
-    decrypter.set_rsa_padding(Padding::PKCS1)?;
-    let buffer_len = decrypter.decrypt_len(&encrypted.data)?;
-    let mut decrypted = vec![0; buffer_len];
-    let decrypted_len = decrypter.decrypt(&encrypted.data, &mut decrypted)?;
-    decrypted.truncate(decrypted_len);
-    Ok(decrypted)
+    pub fn decrypt(tsk: &[u8], encrypted: Encrypted) -> Result<Vec<u8>, SharkSignError> {
+        /* parse private key cert */
+        let tsk = openpgp::Cert::from_reader(tsk)?;
+
+        let policy = openpgp::policy::StandardPolicy::new();
+    
+        let helper = Helper {
+            policy: &policy,
+            secret: &tsk,
+        };
+    
+        let mut decryptor = DecryptorBuilder::from_bytes(&encrypted.data)?
+            .with_policy(&policy, None, helper)?;
+    
+        let mut cleartext: Vec<u8> = Vec::new();
+        io::copy(&mut decryptor, &mut cleartext)?;
+        Ok(cleartext)
+    }
+
+    struct Helper<'a> {
+        policy: &'a dyn Policy,
+        secret: &'a openpgp::Cert,
+    }
+
+    impl<'a> VerificationHelper for Helper<'a> {
+        /*
+           We don't do verification of encrypted messages here.
+           Since the same process distributes the public key as the shares,
+           there'd be no benefit to the shareholder to verify this way --
+           a theoretical attacker could generate and distribute their own
+           public key and signature, so verification has to come from TLS
+           on the server.
+
+           We *will* sign the shares for the benefit of the *server*, so
+           that it can validate shares when they're resubmitted, but that's
+           distinct from PGP encryption, which is for the benefit of the
+           shareholder clients at share distribution time.
+        */
+        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<openpgp::Cert>> {
+            Ok(Vec::new())
+        }
+
+        fn check(&mut self, _structure: MessageStructure) -> openpgp::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> DecryptionHelper for Helper<'a> {
+        fn decrypt<D>(&mut self,
+                      pkesks: &[openpgp::packet::PKESK],
+                      _skesks: &[openpgp::packet::SKESK],
+                       sym_algo: Option<SymmetricAlgorithm>,
+                      mut decrypt: D)
+                      -> openpgp::Result<Option<openpgp::Fingerprint>>
+            where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
+        {
+            // use the one non-encrypted key in our test certs
+            let key = self.secret.keys().unencrypted_secret()
+                .with_policy(self.policy, None)
+                .for_transport_encryption().nth(0).unwrap().key().clone();
+            let mut pair = key.into_keypair().unwrap();
+
+            pkesks[0].decrypt(&mut pair, sym_algo)
+                .map(|(algo, session_key)| decrypt(algo, &session_key));
+
+            // XXX: should return recipient cert's fingerprint
+            Ok(None)
+        }
+    }
+
 }
-*/
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openpgp::serialize::{Serialize, SerializeInto};
-    use openpgp::armor;
     use super::super::test_data;
-
-    // generates 10 certs and outputs them in ascii armor
-    // see test_data::static_approvers_10
-    // #[test]
-    fn generate_certs() {
-        let uids = vec![
-            "alice", "bob", "chester", "david", "eve",
-            "fred", "gus", "henrietta", "irene", "jack",
-        ];
-        let mut certs: Vec<String> = Vec::new();
-        for name in uids {
-            let (cert, _rev) = openpgp::cert::CertBuilder::general_purpose(None, Some(format!("{}@example.org", name))).generate().unwrap();
-            let armor = String::from_utf8(cert.armored().to_vec().unwrap()).unwrap();
-            certs.push(armor);
-        }
-        print!("{:#?}\n", certs);
-        assert!(false);
-    }
+    use super::decrypt;
+    use openpgp::serialize::SerializeInto;
 
     #[test]
     fn generate_cert_export_import() {
@@ -91,10 +137,17 @@ mod tests {
 
     #[test]
     fn test_encrypt() {
-        let approvers = test_data::static_approvers_10();
+        let approvers = test_data::static_approvers_pub_10();
         let shares = test_data::static_shares_3_5();
+        let decryptors = test_data::static_approvers_priv_10();
+
         let cert_bytes = approvers[0].as_bytes();
         let share_bytes = &shares[0].data;
-        encrypt(cert_bytes, share_bytes).unwrap();
+        let decrypt_bytes = decryptors[0].as_bytes();
+
+        let ciphertext = encrypt(cert_bytes, share_bytes).unwrap();
+        let decrypted = decrypt::decrypt(decrypt_bytes, ciphertext).unwrap();
+
+        assert_eq!(share_bytes, &decrypted);
     }
 }
