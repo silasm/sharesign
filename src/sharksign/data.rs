@@ -4,32 +4,24 @@ use serde::{Serialize,Deserialize};
 
 use super::error::SharkSignError;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
     pub data: Vec<u8>,
+    pub signature: Vec<u8>,
 }
 
-impl From<sharks::Share> for Share {
-    fn from(value: sharks::Share) -> Share {
-        Share {
-            data: Vec::from(&value)
-        }
-    }
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedShare {
+    pub encrypted: Encrypted,
+    pub signature: Vec<u8>,
 }
 
 impl TryFrom<&Share> for sharks::Share {
     type Error = SharkSignError;
     fn try_from(value: &Share) -> Result<sharks::Share, SharkSignError> {
         Ok(sharks::Share::try_from(value.data.as_slice())?)
-    }
-}
-
-impl TryFrom<&[u8]> for Share {
-    type Error = SharkSignError;
-    fn try_from(value: &[u8]) -> Result<Share, SharkSignError> {
-        // reuse sharks's validation
-        Ok(Share::from(sharks::Share::try_from(value)?))
     }
 }
 
@@ -101,47 +93,8 @@ pub struct KeyConfig {
 pub struct SignRequestSubmit {
     pub payload: Vec<u8>,
     pub key_config: KeyConfig,
-}
-
-pub fn now() -> u64 {
-    0
-}
-
-pub fn default_expire() -> u64 {
-    0
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SignRequest {
-    payload: Vec<u8>,
-    key_config: KeyConfig,
-    #[serde(skip)]
-    shares_submitted: Vec<Share>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    signature: Option<Signature>,
-    #[serde(skip_deserializing)]
-    #[serde(default = "now")]
-    ctime: u64, // should be a datetime object
-    #[serde(default = "default_expire")]
-    expires: u64, // should be a datetime object
-}
-
-impl SignRequest {
-    pub fn new(payload: &[u8], key_config: KeyConfig, expires: Option<u64>) -> Self {
-        SignRequest {
-            payload: Vec::<u8>::from(payload),
-            key_config: key_config,
-            shares_submitted: Vec::<Share>::new(),
-            signature: None,
-            ctime: now(),
-            expires: expires.unwrap_or_else(|| default_expire()),
-        }
-    }
-    pub fn submit_share(&mut self, share: Share) {
-        self.shares_submitted.push(share);
-    }
+    pub expires: Option<u64>,
+    pub pubkey: Option<PubKey>,
 }
 
 #[derive(Deserialize)]
@@ -158,11 +111,11 @@ pub struct Signature {
     signature: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Hash)]
+#[derive(Serialize, Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PubKey {
-    kind: KeyKind,
-    pem: Vec<u8>,
+    pub kind: KeyKind,
+    pub pem: Vec<u8>,
 }
 
 impl<T: openssl::pkey::HasPublic> TryFrom<openssl::pkey::PKey<T>> for PubKey {
@@ -201,26 +154,9 @@ pub struct KeyGenRequest {
     pub shares_required: u8,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Encrypted {
-    pub data: Vec<u8>,
+    pub data: String,
     pub pubkey: KeyRef,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KeyShares {
-    shares: Vec<Encrypted>,
-}
-
-impl KeyShares {
-    pub fn push(&mut self, share: Encrypted) {
-        self.shares.push(share);
-    }
-    pub fn new() -> Self {
-        KeyShares {
-            shares: Vec::<Encrypted>::new()
-        }
-    }
 }

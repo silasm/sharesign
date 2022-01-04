@@ -6,7 +6,7 @@ use openssl::pkey::{ PKey };
 use openssl::sign::Signer;
 use openssl::rsa::Rsa;
 
-use super::data::{KeyConfig, KeyKind};
+use super::data::{KeyConfig, KeyKind, PubKey};
 use super::error::{SharkSignError};
 
 pub fn generate(config: &KeyConfig) -> Result<Vec<u8>, SharkSignError> {
@@ -37,13 +37,24 @@ pub fn sign(config: &KeyConfig, pem: &[u8], payload: &[u8]) -> Result<Vec<u8>, S
     }
 }
 
-// only used by tests to verify that signatures were done correctly.
-// API has no verification functions
-#[cfg(test)]
+pub fn public_from_private(config: &KeyConfig, pem: &[u8]) -> Result<PubKey, SharkSignError> {
+    match config.kind {
+        KeyKind::RSA => {
+            let rsa = Rsa::private_key_from_pem(pem)?;
+            let pem = rsa.public_key_to_pem()?;
+            Ok(PubKey {
+                kind: KeyKind::RSA,
+                pem: pem,
+            })
+        },
+        _ => Err(format!("not implemented for key kind: {:?}", config.kind))?
+    }
+}
+
 pub fn verify(config: &KeyConfig, pem: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
     use openssl::sign::Verifier;
 
-    let rsa = Rsa::private_key_from_pem(pem)?;
+    let rsa = Rsa::public_key_from_pem(pem)?;
     let key = PKey::from_rsa(rsa)?;
     match config.digest {
         Some(digest) => {
@@ -93,8 +104,9 @@ mod tests {
         let payload = Vec::<u8>::from("this is a string");
 
         let pem = generate(&config).unwrap();
+        let public_pem = public_from_private(&config, &pem).unwrap().pem;
         let signature = sign(&config, &pem, &payload).unwrap();
-        verify(&config, &pem, &payload, &signature).unwrap();
+        verify(&config, &public_pem, &payload, &signature).unwrap();
     }
 
     #[test]
@@ -107,7 +119,8 @@ mod tests {
         let payload = Vec::<u8>::from("this is another string");
 
         let pem = generate(&config).unwrap();
+        let public_pem = public_from_private(&config, &pem).unwrap().pem;
         let signature = sign(&config, &pem, &payload).unwrap();
-        verify(&config, &pem, &payload, &signature).unwrap();
+        verify(&config, &public_pem, &payload, &signature).unwrap();
     }
 }

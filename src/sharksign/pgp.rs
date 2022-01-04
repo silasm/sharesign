@@ -23,6 +23,7 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
     /* build up the encryption pipeline */
     let mut ciphertext = Vec::new();
     let message = Message::new(&mut ciphertext);
+    let message = Armorer::new(message).build()?;
     let message = Encryptor::for_recipients(message, recipients).build()?;
     let mut message = LiteralWriter::new(message).build()?;
 
@@ -30,7 +31,7 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
     message.write_all(payload)?;
     message.finalize()?;
     Ok(Encrypted {
-        data: ciphertext,
+        data: String::from_utf8(ciphertext).unwrap(),
         pubkey: KeyRef {},
     })
 }
@@ -49,7 +50,7 @@ pub mod decrypt {
     use openpgp::crypto::SessionKey;
     
 
-    pub fn decrypt(tsk: &[u8], encrypted: Encrypted) -> Result<Vec<u8>, SharkSignError> {
+    pub fn decrypt(tsk: &[u8], encrypted: &Encrypted) -> Result<Vec<u8>, SharkSignError> {
         /* parse private key cert */
         let tsk = openpgp::Cert::from_reader(tsk)?;
 
@@ -137,6 +138,9 @@ mod tests {
 
     #[test]
     fn test_encrypt() {
+        // TODO: tests at this level should probably be more generic --
+        // should be encrypting basic data and leaving shares and such
+        // to tests in other modules
         let approvers = test_data::static_approvers_pub_10();
         let shares = test_data::static_shares_3_5();
         let decryptors = test_data::static_approvers_priv_10();
@@ -146,8 +150,10 @@ mod tests {
         let decrypt_bytes = decryptors[0].as_bytes();
 
         let ciphertext = encrypt(cert_bytes, share_bytes).unwrap();
-        let decrypted = decrypt::decrypt(decrypt_bytes, ciphertext).unwrap();
+        let decrypted = decrypt::decrypt(decrypt_bytes, &ciphertext).unwrap();
 
-        assert_eq!(share_bytes, &decrypted);
+        // first byte of sharks shares is the x-intercept, always cardinally
+        // numbered, so the first share will have a first byte of 0x01
+        assert_eq!(0x01, decrypted[0]);
     }
 }

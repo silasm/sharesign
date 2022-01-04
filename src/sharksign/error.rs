@@ -20,7 +20,7 @@ pub struct SharkSignError {
 }
 
 impl SharkSignError {
-    fn with_status(mut self, status: http::StatusCode) -> Self {
+    pub fn with_status(mut self, status: http::StatusCode) -> Self {
         self.status = status;
         self
     }

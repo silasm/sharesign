@@ -2,22 +2,49 @@ use std::convert::TryInto;
 use sharks::{Sharks};
 
 pub mod data;
+pub mod state;
 pub mod error;
 pub mod openssl;
 pub mod pgp;
-use self::openssl as tls;
+pub use self::openssl as tls;
 
 // result of signing a payload
 pub struct Signature {
     signature: Vec<u8>
 }
 
-pub fn generate(num_shares: u8, shares_needed: u8, config: &data::KeyConfig) -> Result<Vec<data::Share>, error::SharkSignError> {
+pub fn encrypt_share(cert: &[u8], share: data::Share) -> Result<data::EncryptedShare, error::SharkSignError> {
+    Ok(data::EncryptedShare {
+        encrypted: pgp::encrypt(cert, &share.data)?,
+        signature: share.signature,
+    })
+}
+
+/*
+We only have private keys for openpgp decryption when testing.
+*/
+#[cfg(test)]
+pub fn decrypt_share(cert: &[u8], share: data::EncryptedShare) -> Result<data::Share, error::SharkSignError> {
+    Ok(data::Share {
+        data: pgp::decrypt::decrypt(cert, &share.encrypted)?,
+        signature: share.signature,
+    })
+}
+
+pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfig) -> Result<Vec<data::EncryptedShare>, error::SharkSignError> {
     let key = tls::generate(config)?;
     let sharks = Sharks(shares_needed);
-    // TODO: replace RNG if needed using dealer_rng
     let dealer = sharks.dealer(key.as_slice());
-    Ok(dealer.take(num_shares.into()).map(|x| x.into()).collect())
+    let mut shares: Vec<data::EncryptedShare> = Vec::new();
+    for (cert, shark) in approvers.iter().zip(dealer.take(approvers.len())) {
+        let share_bytes = Vec::from(&shark);
+        let signature = tls::sign(config, &key, &share_bytes)?;
+        shares.push(encrypt_share(cert.as_bytes(), data::Share {
+            data: share_bytes,
+            signature: signature,
+        })?)
+    }
+    Ok(shares)
 }
 
 fn recover(shares_needed: u8, shares: &[data::Share]) -> Result<Vec<u8>, error::SharkSignError> {
@@ -37,10 +64,6 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], config: &
     })
 }
 
-pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<data::Encrypted, error::SharkSignError> {
-    Ok(pgp::encrypt(cert, payload)?)
-}
-
 #[cfg(test)]
 pub mod test_data;
 
@@ -55,11 +78,18 @@ mod tests {
             size: 2048,
             digest: None,
         };
-        let total_shares = 5;
+        let total_shares: usize = 5;
         let shares_needed = 3;
-        let shares = generate(total_shares, shares_needed, &config).unwrap();
-        assert_eq!(shares.len(), usize::from(total_shares));
-        recover(shares_needed, &shares).unwrap();
+        let pubkeys = &test_data::static_approvers_pub_10()[0..5];
+        let privkeys = &test_data::static_approvers_priv_10()[0..5];
+
+        let shares = generate(pubkeys, shares_needed, &config).unwrap();
+        assert_eq!(shares.len(), total_shares);
+
+        let shares_plaintext: Vec<data::Share> = shares.into_iter().zip(privkeys).map(
+            move |(share, key)| decrypt_share(key.as_bytes(), share).unwrap()
+        ).collect();
+        recover(shares_needed, &shares_plaintext).unwrap();
     }
 
     #[test]
@@ -80,6 +110,7 @@ mod tests {
         let signature = sign(shares_needed, &shares, &payload, &config).unwrap();
 
         let pem = recover(3, &shares).unwrap();
-        tls::verify(&config, &pem, &payload, &signature.signature).unwrap();
+        let public_pem = tls::public_from_private(&config, &pem).unwrap().pem;
+        tls::verify(&config, &public_pem, &payload, &signature.signature).unwrap();
     }
 }

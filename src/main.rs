@@ -1,8 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::convert::TryInto;
-use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
-use std::collections::HashMap;
 use actix_web::{ http, web, App, HttpResponse, HttpServer, Responder };
 use actix_rt;
 // use json;
@@ -11,28 +6,22 @@ use serde_json::json;
 mod sharksign;
 use sharksign::data;
 use sharksign::error;
-
-struct State {
-    sign_requests: Mutex<HashMap<ID, data::SignRequest>>,
-    key_gen_requests: Mutex<HashMap<ID, data::KeyShares>>
-}
-
-type ID = u64;
-
-fn get_id<T: Hash>(input: &T) -> ID{
-    let mut s = DefaultHasher::new();
-    input.hash(&mut s);
-    // TODO: add random value here
-    s.finish()
-}
+use sharksign::state;
+use sharksign::state::{State, ID};
 
 async fn startsign(state: web::Data<State>, submission: web::Json<data::SignRequestSubmit>) -> impl Responder {
-    let id = get_id(&*submission);
-    let sign_request = data::SignRequest::new(
+    let id = state::get_id(&*submission);
+    let mut sign_request = state::SignRequest::new(
         &submission.payload,
         submission.key_config.clone(),
-        None
     );
+    if let Some(expiration) = submission.expires {
+        sign_request.set_expiration(expiration);
+    }
+    if let Some(pubkey) = &submission.pubkey {
+        sign_request.set_pubkey(pubkey);
+    }
+
     {
         let mut sign_requests = state.sign_requests.lock().unwrap();
         sign_requests.insert(id, sign_request);
@@ -51,26 +40,16 @@ async fn showsigns(state: web::Data<State>) -> impl Responder {
     HttpResponse::Ok().json(signs)
 }
 
-async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json<data::ShareSubmit>) -> impl Responder {
+async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json<data::ShareSubmit>) -> Result<web::Json<()>, error::SharkSignError> {
     let mut sign_requests = state.sign_requests.lock().unwrap();
     match sign_requests.get_mut(&*id) {
         Some(sign_request) => {
-            /*
-               TODO: any validation of the submitted share happens here
-               To validate, use public key attached to the signature request
-               to validate a signature attached to the share object
-            */
-            
-            sign_request.submit_share(json.share.clone());
-            (
-                Ok(web::Json(())),
-                http::StatusCode::OK,
-            )
+            sign_request.submit_share(json.share.clone())?;
+            Ok(web::Json(()))
         },
-        None => (
-            Err(error::SharkSignError::from(format!("sign request with id {} not found", id))),
-            http::StatusCode::NOT_FOUND,
-        )
+        None => {
+            Err(error::SharkSignError::from(format!("sign request with id {} not found", id)).with_status(http::StatusCode::NOT_FOUND))
+        }
     }
 }
 
@@ -93,19 +72,21 @@ async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl 
 }
 
 async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, error::SharkSignError> {
+    if key_gen_request.approvers.len() > 255 {
+        Err("Cannot generate >255 shares")?;
+    }
+    else if key_gen_request.approvers.len() < key_gen_request.shares_required.into() {
+        Err("Asked to generate fewer shares than required to regenerate key")?;
+    }
     let shares = sharksign::generate(
+        &key_gen_request.approvers,
         key_gen_request.shares_required.into(),
-        key_gen_request.approvers.len().try_into().expect("cannot handle >255 approvers"),
         &key_gen_request.key_config,
     )?;
-    let mut encrypted_shares = data::KeyShares::new();
-    for (cert, share) in key_gen_request.approvers.iter().zip(shares.iter()) {
-        encrypted_shares.push(sharksign::encrypt(cert.clone().as_bytes(), &share.data).unwrap());
-    }
-    let id = get_id(&*key_gen_request);
+    let id = state::get_id(&*key_gen_request);
     {
         let mut key_gen_requests = state.key_gen_requests.lock().unwrap();
-        key_gen_requests.insert(id, encrypted_shares);
+        key_gen_requests.insert(id, shares);
     }
     Ok(HttpResponse::Ok().json(json!({"id": id})))
 }
@@ -125,10 +106,7 @@ async fn showkey(_path: web::Path<data::KeyRef>) -> impl Responder {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    let state = web::Data::new(State {
-        sign_requests: Mutex::new(HashMap::<ID, data::SignRequest>::new()),
-        key_gen_requests: Mutex::new(HashMap::<ID, data::KeyShares>::new()),
-    });
+    let state = web::Data::new(State::new());
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
@@ -170,10 +148,7 @@ mod tests {
             "approvers": test_data::static_approvers_pub_10(),
             "sharesRequired": 3,
         });
-        let state = web::Data::new(State {
-            sign_requests: Mutex::new(HashMap::<ID, data::SignRequest>::new()),
-            key_gen_requests: Mutex::new(HashMap::<ID, data::KeyShares>::new()),
-        });
+        let state = web::Data::new(State::new());
 
         let mut app = test::init_service(
             App::new()
