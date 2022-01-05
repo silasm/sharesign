@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use serde::Serialize;
 
-use super::data::{KeyConfig, KeyKind, PubKey, Share, EncryptedShare, Signature};
+use super::data::{KeyConfig, PubKey, Share, EncryptedShare, Signature};
 use super::error::SharkSignError;
 
 // TODO
@@ -112,41 +112,25 @@ mod tests {
 
     #[test]
     fn add_signed_share() {
-        // TODO: config currently must magically match
-        // test_data::generate_shares need to restructure static test
-        // data to associate related data.
-        let config = KeyConfig {
-            kind: KeyKind::RSA,
-            size: 2048,
-            digest: None,
-        };
+        let td = test_data::test_data_3_5();
 
-        let pubkey = &test_data::static_pubkey();
-        let share = test_data::static_shares_3_5()[0].to_owned();
-        let mut req = SignRequest::new("Sign me!".as_bytes(), config);
-        req.set_pubkey(pubkey);
+        let share = td.decrypted_shares()[0].clone();
+        let mut req = SignRequest::new("Sign me!".as_bytes(), td.config);
+        req.set_pubkey(&td.pubkey);
         req.submit_share(share).unwrap();
     }
 
     #[test]
-    fn add_bogus_share() {
-        // TODO: config currently must magically match
-        // test_data::generate_shares need to restructure static test
-        // data to associate related data.
-        let config = KeyConfig {
-            kind: KeyKind::RSA,
-            size: 2048,
-            digest: None,
-        };
+    fn add_bogus_signature_share() {
+        let td = test_data::test_data_3_5();
 
-        let pubkey = &test_data::static_pubkey();
-        let mut share = test_data::static_shares_3_5()[0].clone();
+        let mut share = td.decrypted_shares()[0].clone();
         // zero the signature so that it fails validation
         for byte in &mut share.signature {
             *byte = 0x00;
         }
-        let mut req = SignRequest::new("Sign me!".as_bytes(), config);
-        req.set_pubkey(pubkey);
+        let mut req = SignRequest::new("Sign me!".as_bytes(), td.config);
+        req.set_pubkey(&td.pubkey);
         assert!(req.submit_share(share).is_err());
     }
 }

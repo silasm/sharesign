@@ -73,44 +73,31 @@ mod tests {
 
     #[test]
     fn test_generate_shares_rsa_2048() {
-        let config = data::KeyConfig {
-            kind: data::KeyKind::RSA,
-            size: 2048,
-            digest: None,
-        };
-        let total_shares: usize = 5;
-        let shares_needed = 3;
-        let pubkeys = &test_data::static_approvers_pub_10()[0..5];
-        let privkeys = &test_data::static_approvers_priv_10()[0..5];
+        let td = test_data::test_data_3_5();
 
-        let shares = generate(pubkeys, shares_needed, &config).unwrap();
-        assert_eq!(shares.len(), total_shares);
+        let shares = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
+        assert_eq!(shares.len(), td.approvers_pub.len());
 
-        let shares_plaintext: Vec<data::Share> = shares.into_iter().zip(privkeys).map(
+        let shares_plaintext: Vec<data::Share> = shares.into_iter().zip(td.approvers_priv.iter()).map(
             move |(share, key)| decrypt_share(key.as_bytes(), share).unwrap()
         ).collect();
-        recover(shares_needed, &shares_plaintext).unwrap();
+        recover(td.shares_required, &shares_plaintext).unwrap();
     }
 
     #[test]
     fn recover_static_pem_3_5() {
-        recover(3, &test_data::static_shares_3_5()).unwrap();
+        recover(3, &test_data::test_data_3_5().decrypted_shares()).unwrap();
     }
 
     #[test]
     fn test_sign_shares_rsa_2048() {
-        let config = data::KeyConfig {
-            kind: data::KeyKind::RSA,
-            size: 2048,
-            digest: None,
-        };
-        let shares = test_data::static_shares_3_5();
-        let shares_needed = 3;
+        let td = test_data::test_data_3_5();
+        let shares = td.decrypted_shares();
         let payload = "Hello, World!".to_owned().into_bytes();
-        let signature = sign(shares_needed, &shares, &payload, &config).unwrap();
+        let signature = sign(td.shares_required, &shares, &payload, &td.config).unwrap();
 
         let pem = recover(3, &shares).unwrap();
-        let public_pem = tls::public_from_private(&config, &pem).unwrap().pem;
-        tls::verify(&config, &public_pem, &payload, &signature.signature).unwrap();
+        let public_pem = tls::public_from_private(&td.config, &pem).unwrap().pem;
+        tls::verify(&td.config, &public_pem, &payload, &signature.signature).unwrap();
     }
 }

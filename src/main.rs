@@ -140,12 +140,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_generate() {
+        let td = test_data::test_data_3_5();
         let keygen = json!({
             "keyConfig": {
                 "kind": "RSA",
                 "size": 2048,
             },
-            "approvers": test_data::static_approvers_pub_10(),
+            "approvers": td.approvers_pub,
             "sharesRequired": 3,
         });
         let state = web::Data::new(State::new());

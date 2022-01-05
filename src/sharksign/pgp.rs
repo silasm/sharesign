@@ -141,13 +141,11 @@ mod tests {
         // TODO: tests at this level should probably be more generic --
         // should be encrypting basic data and leaving shares and such
         // to tests in other modules
-        let approvers = test_data::static_approvers_pub_10();
-        let shares = test_data::static_shares_3_5();
-        let decryptors = test_data::static_approvers_priv_10();
+        let td = test_data::test_data_3_5();
 
-        let cert_bytes = approvers[0].as_bytes();
-        let share_bytes = &shares[0].data;
-        let decrypt_bytes = decryptors[0].as_bytes();
+        let cert_bytes = td.approvers_pub[0].as_bytes();
+        let share_bytes = &td.decrypted_shares()[0].data;
+        let decrypt_bytes = td.approvers_priv[0].as_bytes();
 
         let ciphertext = encrypt(cert_bytes, share_bytes).unwrap();
         let decrypted = decrypt::decrypt(decrypt_bytes, &ciphertext).unwrap();
