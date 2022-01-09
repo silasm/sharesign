@@ -31,7 +31,7 @@ pub fn decrypt_share(cert: &[u8], share: data::EncryptedShare) -> Result<data::S
     })
 }
 
-pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfig) -> Result<Vec<data::EncryptedShare>, error::SharkSignError> {
+pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, error::SharkSignError> {
     let key = tls::generate(config)?;
     let sharks = Sharks(shares_needed);
     let dealer = sharks.dealer(key.as_slice());
@@ -44,7 +44,11 @@ pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfi
             signature: signature,
         })?)
     }
-    Ok(shares)
+    Ok(data::GeneratedKey {
+        pubkey: tls::public_from_private(config, key.as_slice())?,
+        config: config.clone(),
+        shares: shares,
+    })
 }
 
 fn recover(shares_needed: u8, shares: &[data::Share]) -> Result<Vec<u8>, error::SharkSignError> {
@@ -75,10 +79,10 @@ mod tests {
     fn test_generate_shares_rsa_2048() {
         let td = test_data::test_data_3_5();
 
-        let shares = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
-        assert_eq!(shares.len(), td.approvers_pub.len());
+        let generated = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
+        assert_eq!(generated.shares.len(), td.approvers_pub.len());
 
-        let shares_plaintext: Vec<data::Share> = shares.into_iter().zip(td.approvers_priv.iter()).map(
+        let shares_plaintext: Vec<data::Share> = generated.shares.into_iter().zip(td.approvers_priv.iter()).map(
             move |(share, key)| decrypt_share(key.as_bytes(), share).unwrap()
         ).collect();
         recover(td.shares_required, &shares_plaintext).unwrap();

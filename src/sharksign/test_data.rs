@@ -42,9 +42,9 @@ fn generate_shares() {
         digest: None,
     };
     let approvers = static_approvers_pub_10();
-    let shares = super::generate(&approvers[0..5], 3, &config).unwrap();
+    let generated = super::generate(&approvers[0..5], 3, &config).unwrap();
     let mut shares_strings: Vec<String> = Vec::new();
-    for share in shares {
+    for share in generated.shares {
         shares_strings.push(serde_json::to_string(&share).unwrap());
     }
     print!("{:#?}\n", shares_strings);

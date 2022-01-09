@@ -78,7 +78,7 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
     else if key_gen_request.approvers.len() < key_gen_request.shares_required.into() {
         Err("Asked to generate fewer shares than required to regenerate key")?;
     }
-    let shares = sharksign::generate(
+    let generated = sharksign::generate(
         &key_gen_request.approvers,
         key_gen_request.shares_required.into(),
         &key_gen_request.key_config,
@@ -86,7 +86,7 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
     let id = state::get_id(&*key_gen_request);
     {
         let mut key_gen_requests = state.key_gen_requests.lock().unwrap();
-        key_gen_requests.insert(id, shares);
+        key_gen_requests.insert(id, generated);
     }
     Ok(HttpResponse::Ok().json(json!({"id": id})))
 }

@@ -11,7 +11,7 @@ pub struct Share {
     pub signature: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedShare {
     pub encrypted: Encrypted,
@@ -88,6 +88,15 @@ pub struct KeyConfig {
     pub digest: Option<MessageDigest>,
 }
 
+// publishable results of generating a key
+#[derive(Serialize, Hash, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedKey {
+    pub pubkey: PubKey,
+    pub config: KeyConfig,
+    pub shares: Vec<EncryptedShare>,
+}
+
 #[derive(Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct SignRequestSubmit {
@@ -136,7 +145,7 @@ impl TryFrom<&PubKey> for openssl::pkey::PKey<openssl::pkey::Public> {
 }
 
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyRef {
 }
@@ -154,7 +163,7 @@ pub struct KeyGenRequest {
     pub shares_required: u8,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Encrypted {
     pub data: String,

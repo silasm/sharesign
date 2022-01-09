@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use serde::Serialize;
 
-use super::data::{KeyConfig, PubKey, Share, EncryptedShare, Signature};
+use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature};
 use super::error::SharkSignError;
 
 // TODO
@@ -84,14 +84,14 @@ impl SignRequest {
 
 pub struct State {
     pub sign_requests: Mutex<HashMap<ID, SignRequest>>,
-    pub key_gen_requests: Mutex<HashMap<ID, Vec<EncryptedShare>>>,
+    pub key_gen_requests: Mutex<HashMap<ID, GeneratedKey>>,
 }
 
 impl State {
     pub fn new() -> State {
         State {
             sign_requests: Mutex::new(HashMap::<ID, SignRequest>::new()),
-            key_gen_requests: Mutex::new(HashMap::<ID, Vec<EncryptedShare>>::new()),
+            key_gen_requests: Mutex::new(HashMap::<ID, GeneratedKey>::new()),
         }
     }
 }
