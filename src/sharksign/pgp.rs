@@ -10,6 +10,14 @@ use openpgp::armor;
 use super::data::{Encrypted, KeyRef};
 use super::error::{SharkSignError};
 
+fn generate(userid: String) -> openpgp::Result<openpgp::Cert> {
+    let (cert, _revocation) = openpgp::cert::CertBuilder::new()
+        .add_userid(userid)
+        .add_signing_subkey()
+        .generate()?;
+    Ok(cert)
+}
+
 pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     let tsk = openpgp::Cert::from_reader(tsk)?;
 
@@ -208,8 +216,7 @@ mod tests {
 
     #[test]
     fn generate_cert_export_import() {
-        let (cert, _rev) = openpgp::cert::CertBuilder::new()
-            .generate().unwrap();
+        let cert = generate("alice@example.com".to_string()).unwrap();
         let armor = cert.armored().to_vec().unwrap();
         openpgp::cert::Cert::from_reader(armor.as_slice()).unwrap();
     }
