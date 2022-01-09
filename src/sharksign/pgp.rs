@@ -5,9 +5,30 @@ extern crate sequoia_openpgp as openpgp;
 use openpgp::serialize::stream::*;
 use openpgp::parse::{Parse};
 use openpgp::policy::StandardPolicy;
+use openpgp::armor;
 
 use super::data::{Encrypted, KeyRef};
 use super::error::{SharkSignError};
+
+pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
+    let tsk = openpgp::Cert::from_reader(tsk)?;
+
+    let policy = &StandardPolicy::new();
+    let keypair = tsk
+        .keys().unencrypted_secret()
+        .with_policy(policy, None).alive().revoked(false).for_signing()
+        .nth(0).unwrap().key().clone().into_keypair()?;
+
+    let mut sink = Vec::<u8>::new();
+    let message = Message::new(&mut sink);
+    let message = Armorer::new(message).kind(armor::Kind::Signature).build()?;
+    let mut message = Signer::new(message, keypair).detached().build()?;
+
+    message.write_all(payload)?;
+    message.finalize()?;
+
+    Ok(sink)
+}
 
 pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError> {
     /* parse cert */
@@ -23,7 +44,7 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
     /* build up the encryption pipeline */
     let mut ciphertext = Vec::new();
     let message = Message::new(&mut ciphertext);
-    let message = Armorer::new(message).build()?;
+    let message = Armorer::new(message).kind(armor::Kind::Message).build()?;
     let message = Encryptor::for_recipients(message, recipients).build()?;
     let mut message = LiteralWriter::new(message).build()?;
 
@@ -34,6 +55,63 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
         data: String::from_utf8(ciphertext).unwrap(),
         pubkey: KeyRef {},
     })
+}
+
+pub mod verify {
+    extern crate sequoia_openpgp as openpgp;
+    use openpgp::parse::stream::{DetachedVerifierBuilder, VerificationHelper, MessageStructure, MessageLayer};
+    use openpgp::parse::Parse;
+    use openpgp::policy::StandardPolicy;
+    use super::super::error::{SharkSignError};
+
+    pub fn verify(cert: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
+        let sender = openpgp::Cert::from_reader(cert)?;
+        let policy = &StandardPolicy::new();
+
+        let helper = Helper {
+            cert: &sender,
+        };
+
+        let mut verifier = DetachedVerifierBuilder::from_bytes(signature)?
+            .with_policy(policy, None, helper)?;
+
+        Ok(verifier.verify_bytes(payload)?)
+    }
+
+    struct Helper<'a> {
+        cert: &'a openpgp::Cert,
+    }
+
+    impl<'a> VerificationHelper for Helper<'a> {
+        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<openpgp::Cert>> {
+            Ok(vec![self.cert.clone()])
+        }
+
+        fn check(&mut self, structure: MessageStructure) -> openpgp::Result<()> {
+            let mut good = false;
+            for (i, layer) in structure.into_iter().enumerate() {
+                 match (i, layer) {
+                     (0, MessageLayer::SignatureGroup { results }) => {
+                         match results.into_iter().next() {
+                             Some(Ok(_)) =>
+                                 good = true,
+                             Some(Err(e)) =>
+                                 return Err(openpgp::Error::from(e).into()),
+                             None =>
+                                 return Err(anyhow::anyhow!("No signature")),
+                         }
+                     },
+                     _ => return Err(anyhow::anyhow!("Unexpected message structure")),
+                 }
+            }
+
+            if good {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Signature verification failed"))
+            }
+        }
+    }
 }
 
 // only used by tests to verify that encryption works.
@@ -153,5 +231,16 @@ mod tests {
         // first byte of sharks shares is the x-intercept, always cardinally
         // numbered, so the first share will have a first byte of 0x01
         assert_eq!(0x01, decrypted[0]);
+    }
+
+    #[test]
+    fn test_sign_verify() {
+        let td = test_data::test_data_3_5();
+        let tsk = td.approvers_priv[0].as_bytes();
+        let cert = td.approvers_pub[0].as_bytes();
+        let payload = &"Sign me!".as_bytes();
+
+        let signature = sign(tsk, payload).unwrap();
+        verify::verify(cert, payload, &signature).unwrap();
     }
 }
