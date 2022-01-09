@@ -82,6 +82,57 @@ impl TestData {
     }
 }
 
+#[allow(dead_code)]
+pub fn generate_tsks(total: u8) -> Vec<openpgp::Cert> {
+    let uids = vec![
+        "alice", "bob", "chester", "david", "eve",
+        "fred", "gus", "henrietta", "irene", "jack",
+    ];
+    let mut x = 0;
+    std::iter::repeat_with(
+        || { let tmp = x; x = (x + 1) % uids.len(); &uids[tmp] }
+    ).take(total.into()).map(|name| {
+        let (cert, _rev) = openpgp::cert::CertBuilder::general_purpose(None, Some(format!("{}@example.org", name))).generate().unwrap();
+        cert
+    }).collect()
+}
+
+#[allow(dead_code)]
+pub fn generate_test_data(total: u8, required: u8) -> TestData {
+    let config = data::KeyConfig {
+        kind: data::KeyKind::RSA,
+        size: 2048,
+        digest: None,
+    };
+    let approvers = generate_tsks(total);
+    let approvers_pub: Vec<String> = approvers.iter().map(
+        |x| String::from_utf8(x.armored().to_vec().unwrap()).unwrap()
+    ).collect();
+    let approvers_priv: Vec<String> = approvers.iter().map(
+        |x| String::from_utf8(x.as_tsk().armored().to_vec().unwrap()).unwrap()
+    ).collect();
+
+    let generated = super::generate(approvers_pub.as_slice(), required, &config).unwrap();
+    TestData {
+        config,
+        pubkey: generated.pubkey,
+        shares: generated.shares,
+        shares_required: required,
+        approvers_pub,
+        approvers_priv,
+    }
+}
+
+#[cfg(test)]
+//#[test]
+#[allow(dead_code)]
+pub fn generate_3_5() {
+    let td = generate_test_data(5, 3);
+    print!("{}\n", serde_json::to_string(&td).unwrap());
+    assert!(td.approvers_pub.len() == 5);
+    assert!(false);
+}
+
 pub fn test_data_3_5() -> TestData {
     let config = data::KeyConfig {
         kind: data::KeyKind::RSA,
