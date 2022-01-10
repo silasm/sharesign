@@ -1,8 +1,6 @@
 extern crate sequoia_openpgp as openpgp;
 use serde::{Serialize, Deserialize};
 use super::data;
-use std::fs::File;
-use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 pub struct TestData {
@@ -25,12 +23,19 @@ impl TestData {
 
 #[cfg(test)]
 pub fn load_test_data(path: &std::path::Path) -> TestData {
-    let f = File::open(path).unwrap();
-    serde_json::from_reader(f).unwrap()
+    use std::fs::File;
+    let errmsg = format!("failed to load test_data file from path {:?}; generate it with `cargo run --bin generate' from the base directory before running tests.", path);
+    let f = File::open(path).unwrap_or_else(|_error| {
+        panic!("{}", errmsg);
+    });
+    serde_json::from_reader(f).unwrap_or_else(|_error| {
+        panic!("{}", errmsg);
+    })
 }
 
 #[cfg(test)]
 pub fn load_test_data_3_5() -> TestData {
+    use std::path::Path;
     let path = Path::new("test_data/3_5.json");
     load_test_data(&path)
 }
