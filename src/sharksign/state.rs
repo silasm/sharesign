@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn add_signed_share() {
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
 
         let share = td.decrypted_shares()[0].clone();
         let mut req = SignRequest::new("Sign me!".as_bytes(), td.config);
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn add_bogus_signature_share() {
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
 
         let mut share = td.decrypted_shares()[0].clone();
         // zero the signature so that it fails validation

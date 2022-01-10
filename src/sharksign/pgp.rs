@@ -226,7 +226,7 @@ mod tests {
         // TODO: tests at this level should probably be more generic --
         // should be encrypting basic data and leaving shares and such
         // to tests in other modules
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
 
         let cert_bytes = td.approvers_pub[0].as_bytes();
         let share_bytes = &td.decrypted_shares()[0].data;
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_sign_verify() {
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
         let tsk = td.approvers_priv[0].as_bytes();
         let cert = td.approvers_pub[0].as_bytes();
         let payload = &"Sign me!".as_bytes();

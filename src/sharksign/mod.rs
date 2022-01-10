@@ -68,7 +68,6 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], config: &
     })
 }
 
-#[cfg(test)]
 pub mod test_data;
 
 #[cfg(test)]
@@ -77,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_generate_shares_rsa_2048() {
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
 
         let generated = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
         assert_eq!(generated.shares.len(), td.approvers_pub.len());
@@ -90,12 +89,12 @@ mod tests {
 
     #[test]
     fn recover_static_pem_3_5() {
-        recover(3, &test_data::test_data_3_5().decrypted_shares()).unwrap();
+        recover(3, &test_data::load_test_data_3_5().decrypted_shares()).unwrap();
     }
 
     #[test]
     fn test_sign_shares_rsa_2048() {
-        let td = test_data::test_data_3_5();
+        let td = test_data::load_test_data_3_5();
         let shares = td.decrypted_shares();
         let payload = "Hello, World!".to_owned().into_bytes();
         let signature = sign(td.shares_required, &shares, &payload, &td.config).unwrap();
