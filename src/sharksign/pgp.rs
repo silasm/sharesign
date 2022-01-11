@@ -15,7 +15,7 @@ pub fn public_from_private(config: &KeyConfig, cert: openpgp::Cert) -> PubKey {
     PubKey {
         kind: config.kind,
         // serializing without converting to TSK already strips secret key data
-        pem: cert.armored().to_vec().unwrap(),
+        pem: String::from_utf8(cert.armored().to_vec().unwrap()).unwrap(),
     }
 }
 

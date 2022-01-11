@@ -70,7 +70,7 @@ impl SignRequest {
     pub fn submit_share(&mut self, share: Share) -> Result<(), SharkSignError> {
         let _validation = match &self.pubkey {
             Some(pubkey) => super::pgp::verify::verify(
-                &pubkey.pem,
+                &pubkey.pem.as_bytes(),
                 &share.data,
                 &share.signature.as_bytes(),
             )?,

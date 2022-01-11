@@ -108,6 +108,6 @@ mod tests {
         let cert = sequoia_openpgp::Cert::from_reader(cert.as_slice()).unwrap();
         let public_cert = pgp::public_from_private(&td.config, cert).pem;
         
-        pgp::verify::verify(&public_cert, &payload, &signature.signature).unwrap();
+        pgp::verify::verify(&public_cert.as_bytes(), &payload, &signature.signature).unwrap();
     }
 }

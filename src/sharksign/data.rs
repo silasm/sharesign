@@ -85,7 +85,7 @@ pub struct Signature {
 #[serde(rename_all = "camelCase")]
 pub struct PubKey {
     pub kind: KeyKind,
-    pub pem: Vec<u8>,
+    pub pem: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
