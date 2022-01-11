@@ -88,6 +88,7 @@ mod tests {
     fn generate_rsa_2048() {
         let config = KeyConfig {
             kind: KeyKind::RSA,
+            userid: "alice@example.org".to_string(),
             size: 2048,
             digest: None,
         };
@@ -98,6 +99,7 @@ mod tests {
     fn sign_and_verify_rsa_2048() {
         let config = KeyConfig {
             kind: KeyKind::RSA,
+            userid: "alice@example.org".to_string(),
             size: 2048,
             digest: None,
         };
@@ -113,6 +115,7 @@ mod tests {
     fn sign_and_verify_rsa_2048_sha256() {
         let config = KeyConfig {
             kind: KeyKind::RSA,
+            userid: "alice@example.org".to_string(),
             size: 2048,
             digest: Some(MessageDigest::SHA256),
         };

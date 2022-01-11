@@ -4,9 +4,9 @@ use sharks::{Sharks};
 pub mod data;
 pub mod state;
 pub mod error;
-pub mod openssl;
 pub mod pgp;
-pub use self::openssl as tls;
+
+use sequoia_openpgp::serialize::SerializeInto;
 
 // result of signing a payload
 pub struct Signature {
@@ -32,20 +32,23 @@ pub fn decrypt_share(cert: &[u8], share: data::EncryptedShare) -> Result<data::S
 }
 
 pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, error::SharkSignError> {
-    let key = tls::generate(config)?;
+    let key = pgp::generate(config)?;
+    let tsk_bytes = key.as_tsk().to_vec()?;
+
     let sharks = Sharks(shares_needed);
-    let dealer = sharks.dealer(key.as_slice());
+    let dealer = sharks.dealer(&tsk_bytes);
+
     let mut shares: Vec<data::EncryptedShare> = Vec::new();
     for (cert, shark) in approvers.iter().zip(dealer.take(approvers.len())) {
         let share_bytes = Vec::from(&shark);
-        let signature = tls::sign(config, &key, &share_bytes)?;
+        let signature = pgp::sign(&tsk_bytes, &share_bytes)?;
         shares.push(encrypt_share(cert.as_bytes(), data::Share {
             data: share_bytes,
             signature: signature,
         })?)
     }
     Ok(data::GeneratedKey {
-        pubkey: tls::public_from_private(config, key.as_slice())?,
+        pubkey: pgp::public_from_private(config, key),
         config: config.clone(),
         shares: shares,
     })
@@ -60,9 +63,9 @@ fn recover(shares_needed: u8, shares: &[data::Share]) -> Result<Vec<u8>, error::
     Ok(sharks.recover(sharkshares.iter())?)
 }
 
-pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], config: &data::KeyConfig) -> Result<Signature, error::SharkSignError> {
-    let pem = recover(shares_needed, shares)?;
-    let signature = tls::sign(config, pem.as_slice(), payload)?;
+pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8]) -> Result<Signature, error::SharkSignError> {
+    let cert = recover(shares_needed, shares)?;
+    let signature = pgp::sign(&cert, payload)?;
     Ok(Signature{
         signature: signature,
     })
@@ -94,13 +97,17 @@ mod tests {
 
     #[test]
     fn test_sign_shares_rsa_2048() {
+        use sequoia_openpgp::parse::Parse;
+
         let td = test_data::load_test_data_3_5();
         let shares = td.decrypted_shares();
         let payload = "Hello, World!".to_owned().into_bytes();
-        let signature = sign(td.shares_required, &shares, &payload, &td.config).unwrap();
+        let signature = sign(td.shares_required, &shares, &payload).unwrap();
 
-        let pem = recover(3, &shares).unwrap();
-        let public_pem = tls::public_from_private(&td.config, &pem).unwrap().pem;
-        tls::verify(&td.config, &public_pem, &payload, &signature.signature).unwrap();
+        let cert = recover(3, &shares).unwrap();
+        let cert = sequoia_openpgp::Cert::from_reader(cert.as_slice()).unwrap();
+        let public_cert = pgp::public_from_private(&td.config, cert).pem;
+        
+        pgp::verify::verify(&public_cert, &payload, &signature.signature).unwrap();
     }
 }

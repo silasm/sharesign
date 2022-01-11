@@ -144,6 +144,7 @@ mod tests {
         let keygen = json!({
             "keyConfig": {
                 "kind": "RSA",
+                "userid": "alice@example.org",
                 "size": 2048,
             },
             "approvers": td.approvers_pub,
@@ -156,7 +157,6 @@ mod tests {
                 .app_data(state.clone())
                 .route("/", web::post().to(newkey)),
         ).await;
-        // print!("{:#?}\n", keygen);
         let req = test::TestRequest::post()
             .uri("/")
             .set_json(&keygen)

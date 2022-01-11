@@ -69,8 +69,7 @@ impl SignRequest {
     /// memory.
     pub fn submit_share(&mut self, share: Share) -> Result<(), SharkSignError> {
         let _validation = match &self.pubkey {
-            Some(pubkey) => super::tls::verify(
-                &self.key_config,
+            Some(pubkey) => super::pgp::verify::verify(
                 &pubkey.pem,
                 &share.data,
                 &share.signature,

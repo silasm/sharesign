@@ -6,13 +6,23 @@ use openpgp::serialize::stream::*;
 use openpgp::parse::{Parse};
 use openpgp::policy::StandardPolicy;
 use openpgp::armor;
+use openpgp::serialize::SerializeInto;
 
-use super::data::{Encrypted, KeyRef};
+use super::data::{Encrypted, KeyRef, KeyConfig, PubKey};
 use super::error::{SharkSignError};
 
-fn generate(userid: String) -> openpgp::Result<openpgp::Cert> {
+pub fn public_from_private(config: &KeyConfig, cert: openpgp::Cert) -> PubKey {
+    PubKey {
+        kind: config.kind,
+        // serializing without converting to TSK already strips secret key data
+        pem: cert.armored().to_vec().unwrap(),
+    }
+}
+
+pub fn generate(config: &KeyConfig) -> openpgp::Result<openpgp::Cert> {
+    // TODO: should respect more fields in config
     let (cert, _revocation) = openpgp::cert::CertBuilder::new()
-        .add_userid(userid)
+        .add_userid(config.userid.clone())
         .add_signing_subkey()
         .generate()?;
     Ok(cert)
@@ -216,7 +226,9 @@ mod tests {
 
     #[test]
     fn generate_cert_export_import() {
-        let cert = generate("alice@example.com".to_string()).unwrap();
+        let td = test_data::load_test_data_3_5();
+        
+        let cert = generate(&td.config).unwrap();
         let armor = cert.armored().to_vec().unwrap();
         openpgp::cert::Cert::from_reader(armor.as_slice()).unwrap();
     }

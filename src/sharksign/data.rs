@@ -82,6 +82,7 @@ impl TryFrom<MessageDigest> for openssl::hash::MessageDigest {
 #[serde(rename_all = "camelCase")]
 pub struct KeyConfig {
     pub kind: KeyKind,
+    pub userid: String,
     pub size: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
