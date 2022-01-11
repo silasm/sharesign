@@ -1,5 +1,5 @@
 use std::hash::Hash;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use serde::{Serialize,Deserialize};
 
 use super::error::SharkSignError;
@@ -31,50 +31,10 @@ pub enum KeyKind {
     Unknown, // just to get rid of "impossible match" warnings
 }
 
-impl TryFrom<openssl::pkey::Id> for KeyKind {
-    type Error = SharkSignError;
-    fn try_from(value: openssl::pkey::Id) -> Result<KeyKind, SharkSignError> {
-        match value {
-            openssl::pkey::Id::RSA => Ok(KeyKind::RSA),
-            _ => Err(format!("openssl key kind {:?} not supported by sharksign", value))?
-        }
-    }
-}
-
-impl TryFrom<KeyKind> for openssl::pkey::Id {
-    type Error = SharkSignError;
-    fn try_from(value: KeyKind) -> Result<openssl::pkey::Id, SharkSignError> {
-        match value {
-            KeyKind::RSA => Ok(openssl::pkey::Id::RSA),
-            _ => Err(format!("sharksign key kind {:?} not supported for openssl backend", value))?
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum MessageDigest {
     SHA256,
     Unknown, // just to get rid of "impossible match" warnings
-}
-
-impl TryFrom<openssl::hash::MessageDigest> for MessageDigest {
-    type Error = SharkSignError;
-    fn try_from(value: openssl::hash::MessageDigest) -> Result<MessageDigest, SharkSignError> {
-        match value.type_() {
-            openssl::nid::Nid::SHA256 => Ok(MessageDigest::SHA256),
-            nid => Err(format!("openssl message digest {:?} not supported by sharksign", nid))?
-        }
-    }
-}
-
-impl TryFrom<MessageDigest> for openssl::hash::MessageDigest {
-    type Error = SharkSignError;
-    fn try_from(value: MessageDigest) -> Result<openssl::hash::MessageDigest, SharkSignError> {
-        match value {
-            MessageDigest::SHA256 => Ok(openssl::hash::MessageDigest::sha256()),
-            _ => Err(format!("sharksign message digest {:?} not supported for openssl backend", value))?
-        }
-    }
 }
 
 // configuration for generating a key
@@ -127,24 +87,6 @@ pub struct PubKey {
     pub kind: KeyKind,
     pub pem: Vec<u8>,
 }
-
-impl<T: openssl::pkey::HasPublic> TryFrom<openssl::pkey::PKey<T>> for PubKey {
-    type Error = SharkSignError;
-    fn try_from(value: openssl::pkey::PKey<T>) -> Result<PubKey, SharkSignError> {
-        Ok(PubKey {
-            kind: value.id().try_into()?,
-            pem: value.public_key_to_pem()?,
-        })
-    }
-}
-
-impl TryFrom<&PubKey> for openssl::pkey::PKey<openssl::pkey::Public> {
-    type Error = SharkSignError;
-    fn try_from(value: &PubKey) -> Result<openssl::pkey::PKey<openssl::pkey::Public>, SharkSignError> {
-        Ok(openssl::pkey::PKey::<openssl::pkey::Public>::public_key_from_pem(&value.pem)?)
-    }
-}
-
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]

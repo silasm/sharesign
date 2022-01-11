@@ -1,14 +1,12 @@
 use std::fmt;
 use anyhow;
 use std::error::Error;
-use openssl::error::ErrorStack;
 use actix_web::{http, HttpResponse, dev::HttpResponseBuilder, ResponseError};
 use serde_json::json;
 
 #[derive(Debug)]
 pub enum SharkSignErrorType {
     StringError(String),
-    OpensslError(ErrorStack),
     PgpError(anyhow::Error),
     IOError(std::io::Error),
 }
@@ -30,7 +28,6 @@ impl fmt::Display for SharkSignError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.err {
             SharkSignErrorType::StringError(e) => write!(f, "Internal Error {}: {}", self.status, e),
-            SharkSignErrorType::OpensslError(e) => write!(f, "SSL Error {} : {}", self.status, e),
             SharkSignErrorType::PgpError(e) => write!(f, "PGP Error {} : {}", self.status, e),
             SharkSignErrorType::IOError(e) => write!(f, "I/O Error {} : {}", self.status, e),
         }
@@ -50,15 +47,6 @@ impl From<&str> for SharkSignError {
     fn from(result: &str) -> SharkSignError {
         SharkSignError {
             err: SharkSignErrorType::StringError(result.to_owned()),
-            status: http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl From<ErrorStack> for SharkSignError {
-    fn from(result: ErrorStack) -> SharkSignError {
-        SharkSignError {
-            err: SharkSignErrorType::OpensslError(result),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
