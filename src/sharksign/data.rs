@@ -8,14 +8,14 @@ use super::error::SharkSignError;
 #[serde(rename_all = "camelCase")]
 pub struct Share {
     pub data: Vec<u8>,
-    pub signature: Vec<u8>,
+    pub signature: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedShare {
     pub encrypted: Encrypted,
-    pub signature: Vec<u8>,
+    pub signature: String,
 }
 
 impl TryFrom<&Share> for sharks::Share {

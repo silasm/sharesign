@@ -72,7 +72,7 @@ impl SignRequest {
             Some(pubkey) => super::pgp::verify::verify(
                 &pubkey.pem,
                 &share.data,
-                &share.signature,
+                &share.signature.as_bytes(),
             )?,
             None => (),
         };
@@ -125,8 +125,12 @@ mod tests {
 
         let mut share = td.decrypted_shares()[0].clone();
         // zero the signature so that it fails validation
-        for byte in &mut share.signature {
-            *byte = 0x00;
+        // unsafe: because overwriting bytes in a string; zeroing the whole
+        // thing will yield valid utf8 so this is not a concern.
+        unsafe {
+            for byte in &mut share.signature.as_bytes_mut().iter_mut() {
+                *byte = 0x00;
+            }
         }
         let mut req = SignRequest::new("Sign me!".as_bytes(), td.config);
         req.set_pubkey(&td.pubkey);

@@ -44,7 +44,7 @@ pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfi
         let signature = pgp::sign(&tsk_bytes, &share_bytes)?;
         shares.push(encrypt_share(cert.as_bytes(), data::Share {
             data: share_bytes,
-            signature: signature,
+            signature: String::from_utf8(signature).unwrap(),
         })?)
     }
     Ok(data::GeneratedKey {
