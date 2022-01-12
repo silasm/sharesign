@@ -141,7 +141,7 @@ mod tests {
         let td = test_data::load_test_data_3_5();
         let keygen = json!({
             "keyConfig": {
-                "kind": "RSA",
+                "kind": "Rsa",
                 "userid": "alice@example.org",
                 "size": 2048,
             },

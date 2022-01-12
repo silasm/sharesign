@@ -12,7 +12,7 @@ use sharksign::data;
 fn main() {
     let path = Path::new("test_data/3_5.json");
     let config = data::KeyConfig {
-        kind: data::KeyKind::RSA,
+        kind: data::KeyKind::Rsa,
         userid: "alice@example.org".to_string(),
         size: 2048,
         digest: None,

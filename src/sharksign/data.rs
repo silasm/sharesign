@@ -27,7 +27,7 @@ impl TryFrom<&Share> for sharks::Share {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum KeyKind {
-    RSA,
+    Rsa,
     Unknown, // just to get rid of "impossible match" warnings
 }
 
