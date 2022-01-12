@@ -50,7 +50,7 @@ pub fn generate(approvers: &[String], shares_needed: u8, config: &data::KeyConfi
     Ok(data::GeneratedKey {
         pubkey: pgp::public_from_private(config, key),
         config: config.clone(),
-        shares: shares,
+        shares,
     })
 }
 
@@ -67,7 +67,7 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8]) -> Result
     let cert = recover(shares_needed, shares)?;
     let signature = pgp::sign(&cert, payload)?;
     Ok(Signature{
-        signature: signature,
+        signature,
     })
 }
 

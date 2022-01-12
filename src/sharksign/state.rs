@@ -44,7 +44,7 @@ impl SignRequest {
     pub fn new(payload: &[u8], key_config: KeyConfig) -> Self {
         SignRequest {
             payload: Vec::<u8>::from(payload),
-            key_config: key_config,
+            key_config,
             pubkey: None,
             shares_submitted: Vec::<Share>::new(),
             signature: None,
