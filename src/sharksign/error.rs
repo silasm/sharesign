@@ -6,9 +6,9 @@ use serde_json::json;
 
 #[derive(Debug)]
 pub enum SharkSignErrorType {
-    StringError(String),
-    PgpError(anyhow::Error),
-    IOError(std::io::Error),
+    String(String),
+    Pgp(anyhow::Error),
+    IO(std::io::Error),
 }
 
 #[derive(Debug)]
@@ -27,9 +27,9 @@ impl SharkSignError {
 impl fmt::Display for SharkSignError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.err {
-            SharkSignErrorType::StringError(e) => write!(f, "Internal Error {}: {}", self.status, e),
-            SharkSignErrorType::PgpError(e) => write!(f, "PGP Error {} : {}", self.status, e),
-            SharkSignErrorType::IOError(e) => write!(f, "I/O Error {} : {}", self.status, e),
+            SharkSignErrorType::String(e) => write!(f, "Internal Error {}: {}", self.status, e),
+            SharkSignErrorType::Pgp(e) => write!(f, "PGP Error {} : {}", self.status, e),
+            SharkSignErrorType::IO(e) => write!(f, "I/O Error {} : {}", self.status, e),
         }
     }
 }
@@ -37,7 +37,7 @@ impl fmt::Display for SharkSignError {
 impl From<String> for SharkSignError {
     fn from(result: String) -> SharkSignError {
         SharkSignError {
-            err: SharkSignErrorType::StringError(result),
+            err: SharkSignErrorType::String(result),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -46,7 +46,7 @@ impl From<String> for SharkSignError {
 impl From<&str> for SharkSignError {
     fn from(result: &str) -> SharkSignError {
         SharkSignError {
-            err: SharkSignErrorType::StringError(result.to_owned()),
+            err: SharkSignErrorType::String(result.to_owned()),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -55,7 +55,7 @@ impl From<&str> for SharkSignError {
 impl From<anyhow::Error> for SharkSignError {
     fn from(result: anyhow::Error) -> SharkSignError {
         SharkSignError {
-            err: SharkSignErrorType::PgpError(result),
+            err: SharkSignErrorType::Pgp(result),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -64,7 +64,7 @@ impl From<anyhow::Error> for SharkSignError {
 impl From<std::io::Error> for SharkSignError {
     fn from(result: std::io::Error) -> SharkSignError {
         SharkSignError {
-            err: SharkSignErrorType::IOError(result),
+            err: SharkSignErrorType::IO(result),
             status: http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
