@@ -72,9 +72,8 @@ impl From<std::io::Error> for SharkSignError {
 
 impl<T: Into<SharkSignError>> From<(T, http::StatusCode)> for SharkSignError {
     fn from(result: (T, http::StatusCode)) -> SharkSignError {
-        match result {
-            (err, status) => err.into().with_status(status)
-        }
+        let (err, status) = result;
+        err.into().with_status(status)
     }
 }
 
