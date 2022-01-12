@@ -78,7 +78,7 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
     }
     let generated = sharksign::generate(
         &key_gen_request.approvers,
-        key_gen_request.shares_required.into(),
+        key_gen_request.shares_required,
         &key_gen_request.key_config,
     )?;
     let id = state::get_id(&*key_gen_request);
