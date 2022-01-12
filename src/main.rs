@@ -1,6 +1,4 @@
 use actix_web::{ http, web, App, HttpResponse, HttpServer, Responder };
-use actix_rt;
-// use json;
 use serde_json::json;
 
 mod sharksign;
