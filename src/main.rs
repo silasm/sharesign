@@ -71,10 +71,10 @@ async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl 
 
 async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, error::SharkSignError> {
     if key_gen_request.approvers.len() > 255 {
-        Err("Cannot generate >255 shares")?;
+        return Err("Cannot generate >255 shares".into())
     }
     else if key_gen_request.approvers.len() < key_gen_request.shares_required.into() {
-        Err("Asked to generate fewer shares than required to regenerate key")?;
+        return Err("Asked to generate fewer shares than required to regenerate key".into())
     }
     let generated = sharksign::generate(
         &key_gen_request.approvers,
