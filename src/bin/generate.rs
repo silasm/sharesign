@@ -43,7 +43,7 @@ pub fn generate_test_data(config: &data::KeyConfig, total: u8, required: u8) -> 
         |x| String::from_utf8(x.as_tsk().armored().to_vec().unwrap()).unwrap()
     ).collect();
 
-    let generated = sharksign::generate(approvers_pub.as_slice(), required, &config).unwrap();
+    let generated = sharksign::generate(approvers_pub.as_slice(), required, config).unwrap();
     TestData {
         config: config.clone(),
         pubkey: generated.pubkey,
