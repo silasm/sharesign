@@ -31,7 +31,7 @@ async fn showsigns(state: web::Data<State>) -> impl Responder {
     let mut signs: Vec<ID> = Vec::new();
     {
         let sign_requests = state.sign_requests.lock().unwrap();
-        for (id, _sign_request) in &*sign_requests {
+        for id in sign_requests.keys() {
             signs.push(*id);
         }
     }
