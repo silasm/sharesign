@@ -7,11 +7,12 @@ use openpgp::parse::{Parse};
 use openpgp::policy::StandardPolicy;
 use openpgp::armor;
 use openpgp::serialize::SerializeInto;
+pub use openpgp::Cert;
 
 use super::data::{Encrypted, KeyRef, KeyConfig, PubKey};
 use super::error::{SharkSignError};
 
-pub fn public_from_private(config: &KeyConfig, cert: openpgp::Cert) -> PubKey {
+pub fn public_from_private(config: &KeyConfig, cert: Cert) -> PubKey {
     PubKey {
         kind: config.kind,
         // serializing without converting to TSK already strips secret key data
@@ -19,7 +20,7 @@ pub fn public_from_private(config: &KeyConfig, cert: openpgp::Cert) -> PubKey {
     }
 }
 
-pub fn generate(config: &KeyConfig) -> openpgp::Result<openpgp::Cert> {
+pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
     // TODO: should respect more fields in config
     let (cert, _revocation) = openpgp::cert::CertBuilder::new()
         .add_userid(config.userid.clone())
@@ -29,7 +30,7 @@ pub fn generate(config: &KeyConfig) -> openpgp::Result<openpgp::Cert> {
 }
 
 pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
-    let tsk = openpgp::Cert::from_reader(tsk)?;
+    let tsk = Cert::from_reader(tsk)?;
 
     let policy = &StandardPolicy::new();
     let keypair = tsk
@@ -50,7 +51,7 @@ pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
 
 pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError> {
     /* parse cert */
-    let cert = openpgp::Cert::from_reader(cert)?;
+    let cert = Cert::from_reader(cert)?;
 
     /* set encryption policy and keys */
     let policy = &StandardPolicy::new();
@@ -77,13 +78,14 @@ pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError>
 
 pub mod verify {
     extern crate sequoia_openpgp as openpgp;
+    use super::Cert;
     use openpgp::parse::stream::{DetachedVerifierBuilder, VerificationHelper, MessageStructure, MessageLayer};
     use openpgp::parse::Parse;
     use openpgp::policy::StandardPolicy;
     use super::super::error::{SharkSignError};
 
     pub fn verify(cert: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
-        let sender = openpgp::Cert::from_reader(cert)?;
+        let sender = Cert::from_reader(cert)?;
         let policy = &StandardPolicy::new();
 
         let helper = Helper {
@@ -97,11 +99,11 @@ pub mod verify {
     }
 
     struct Helper<'a> {
-        cert: &'a openpgp::Cert,
+        cert: &'a Cert,
     }
 
     impl<'a> VerificationHelper for Helper<'a> {
-        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<openpgp::Cert>> {
+        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<Cert>> {
             Ok(vec![self.cert.clone()])
         }
 
@@ -148,7 +150,7 @@ pub mod decrypt {
 
     pub fn decrypt(tsk: &[u8], encrypted: &Encrypted) -> Result<Vec<u8>, SharkSignError> {
         /* parse private key cert */
-        let tsk = openpgp::Cert::from_reader(tsk)?;
+        let tsk = Cert::from_reader(tsk)?;
 
         let policy = openpgp::policy::StandardPolicy::new();
     
@@ -167,7 +169,7 @@ pub mod decrypt {
 
     struct Helper<'a> {
         policy: &'a dyn Policy,
-        secret: &'a openpgp::Cert,
+        secret: &'a Cert,
     }
 
     impl<'a> VerificationHelper for Helper<'a> {
@@ -184,7 +186,7 @@ pub mod decrypt {
            distinct from PGP encryption, which is for the benefit of the
            shareholder clients at share distribution time.
         */
-        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<openpgp::Cert>> {
+        fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<Cert>> {
             Ok(Vec::new())
         }
 
