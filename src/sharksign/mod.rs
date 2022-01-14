@@ -86,8 +86,6 @@ mod tests {
     fn test_generate_shares_rsa_2048() {
         let td = test_data::load_test_data_3_5();
 
-        
-
         let generated = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
         assert_eq!(generated.shares.len(), td.approvers_pub.len());
 

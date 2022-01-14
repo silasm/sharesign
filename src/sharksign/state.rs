@@ -91,7 +91,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> State{
+    pub fn new() -> State {
         State {
             sign_requests: Mutex::new(HashMap::<ID, SignRequest>::new()),
             key_gen_requests: Mutex::new(HashMap::<ID, GeneratedKey>::new()),
