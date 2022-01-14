@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature};
 use super::error::SharkSignError;
+use sequoia_openpgp::parse::Parse;
 
 // TODO
 pub fn now() -> u64 {
@@ -69,11 +70,14 @@ impl SignRequest {
     /// memory.
     pub fn submit_share(&mut self, share: Share) -> Result<(), SharkSignError> {
         let _validation = match &self.pubkey {
-            Some(pubkey) => super::pgp::verify::verify(
-                pubkey.pem.as_bytes(),
-                &share.data,
-                share.signature.as_bytes(),
-            )?,
+            Some(pubkey) => {
+                let cert = super::pgp::Cert::from_reader(pubkey.pem.as_bytes())?;
+                super::pgp::verify::verify(
+                    &cert,
+                    &share.data,
+                    share.signature.as_bytes(),
+                )?
+            },
             None => (),
         };
         self.shares_submitted.push(share);
@@ -87,7 +91,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> State {
+    pub fn new() -> State{
         State {
             sign_requests: Mutex::new(HashMap::<ID, SignRequest>::new()),
             key_gen_requests: Mutex::new(HashMap::<ID, GeneratedKey>::new()),

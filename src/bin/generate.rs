@@ -1,5 +1,4 @@
 extern crate sequoia_openpgp as openpgp;
-use openpgp::serialize::SerializeInto;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -8,6 +7,7 @@ use std::path::Path;
 mod sharksign;
 use sharksign::test_data::TestData;
 use sharksign::data;
+use sharksign::pgp::Cert;
 
 fn main() {
     let path = Path::new("test_data/3_5.json");
@@ -20,7 +20,7 @@ fn main() {
     write_test_data(path, &config, 5, 3);
 }
 
-pub fn generate_tsks(total: u8) -> Vec<openpgp::Cert> {
+pub fn generate_tsks(total: u8) -> Vec<Cert> {
     let uids = vec![
         "alice", "bob", "chester", "david", "eve",
         "fred", "gus", "henrietta", "irene", "jack",
@@ -34,24 +34,21 @@ pub fn generate_tsks(total: u8) -> Vec<openpgp::Cert> {
     }).collect()
 }
 
+fn to_references<T>(objs: &[T]) -> Vec<&T> {
+    objs.iter().map(|x| x).collect()
+}
+
 pub fn generate_test_data(config: &data::KeyConfig, total: u8, required: u8) -> TestData {
     let approvers = generate_tsks(total);
-    let approvers_pub: Vec<String> = approvers.iter().map(
-        |x| String::from_utf8(x.armored().to_vec().unwrap()).unwrap()
-    ).collect();
-    let approvers_priv: Vec<String> = approvers.iter().map(
-        |x| String::from_utf8(x.as_tsk().armored().to_vec().unwrap()).unwrap()
-    ).collect();
-
-    let generated = sharksign::generate(approvers_pub.as_slice(), required, config).unwrap();
-    TestData {
-        config: config.clone(),
-        pubkey: generated.pubkey,
-        shares: generated.shares,
-        shares_required: required,
-        approvers_pub,
-        approvers_priv,
-    }
+    let approvers_ref: Vec<&Cert> = to_references(&approvers);
+    let generated = sharksign::generate(&approvers_ref, required, config).unwrap();
+    TestData::new(
+        config.clone(),
+        generated.pubkey,
+        generated.shares,
+        required,
+        approvers,
+    )
 }
 
 pub fn write_test_data(path: &std::path::Path, config: &data::KeyConfig, total: u8, required: u8) {

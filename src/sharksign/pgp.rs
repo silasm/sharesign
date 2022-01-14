@@ -3,7 +3,6 @@ use std::io::Write;
 extern crate sequoia_openpgp as openpgp;
 // use openpgp::cert::prelude::*;
 use openpgp::serialize::stream::*;
-use openpgp::parse::{Parse};
 use openpgp::policy::StandardPolicy;
 use openpgp::armor;
 use openpgp::serialize::SerializeInto;
@@ -29,9 +28,7 @@ pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
     Ok(cert)
 }
 
-pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
-    let tsk = Cert::from_reader(tsk)?;
-
+pub fn sign(tsk: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     let policy = &StandardPolicy::new();
     let keypair = tsk
         .keys().unencrypted_secret()
@@ -49,10 +46,7 @@ pub fn sign(tsk: &[u8], payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     Ok(sink)
 }
 
-pub fn encrypt(cert: &[u8], payload: &[u8]) -> Result<Encrypted, SharkSignError> {
-    /* parse cert */
-    let cert = Cert::from_reader(cert)?;
-
+pub fn encrypt(cert: &Cert, payload: &[u8]) -> Result<Encrypted, SharkSignError> {
     /* set encryption policy and keys */
     let policy = &StandardPolicy::new();
     let recipients = cert.keys()
@@ -84,12 +78,11 @@ pub mod verify {
     use openpgp::policy::StandardPolicy;
     use super::super::error::{SharkSignError};
 
-    pub fn verify(cert: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
-        let sender = Cert::from_reader(cert)?;
+    pub fn verify(sender: &Cert, payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
         let policy = &StandardPolicy::new();
 
         let helper = Helper {
-            cert: &sender,
+            cert: sender,
         };
 
         let mut verifier = DetachedVerifierBuilder::from_bytes(signature)?
@@ -144,14 +137,12 @@ pub mod decrypt {
     use super::*;
     use openpgp::policy::Policy;
     use openpgp::parse::stream::*;
+    use openpgp::parse::Parse;
     use openpgp::types::*;
     use openpgp::crypto::SessionKey;
     
 
-    pub fn decrypt(tsk: &[u8], encrypted: &Encrypted) -> Result<Vec<u8>, SharkSignError> {
-        /* parse private key cert */
-        let tsk = Cert::from_reader(tsk)?;
-
+    pub fn decrypt(tsk: &Cert, encrypted: &Encrypted) -> Result<Vec<u8>, SharkSignError> {
         let policy = openpgp::policy::StandardPolicy::new();
     
         let helper = Helper {
@@ -225,6 +216,7 @@ mod tests {
     use super::super::test_data;
     use super::decrypt;
     use openpgp::serialize::SerializeInto;
+    use openpgp::parse::Parse;
 
     #[test]
     fn generate_cert_export_import() {
@@ -242,12 +234,12 @@ mod tests {
         // to tests in other modules
         let td = test_data::load_test_data_3_5();
 
-        let cert_bytes = td.approvers_pub[0].as_bytes();
+        let cert = &td.approvers_pub()[0];
         let share_bytes = &td.decrypted_shares()[0].data;
-        let decrypt_bytes = td.approvers_priv[0].as_bytes();
+        let tsk = &td.approvers_priv()[0];
 
-        let ciphertext = encrypt(cert_bytes, share_bytes).unwrap();
-        let decrypted = decrypt::decrypt(decrypt_bytes, &ciphertext).unwrap();
+        let ciphertext = encrypt(cert, share_bytes).unwrap();
+        let decrypted = decrypt::decrypt(tsk, &ciphertext).unwrap();
 
         // first byte of sharks shares is the x-intercept, always cardinally
         // numbered, so the first share will have a first byte of 0x01
@@ -257,8 +249,8 @@ mod tests {
     #[test]
     fn test_sign_verify() {
         let td = test_data::load_test_data_3_5();
-        let tsk = td.approvers_priv[0].as_bytes();
-        let cert = td.approvers_pub[0].as_bytes();
+        let tsk = &td.approvers_priv()[0];
+        let cert = &td.approvers_pub()[0];
         let payload = &"Sign me!".as_bytes();
 
         let signature = sign(tsk, payload).unwrap();

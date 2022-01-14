@@ -70,14 +70,15 @@ async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl 
 }
 
 async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, error::SharkSignError> {
-    if key_gen_request.approvers.len() > 255 {
+    let share_count = key_gen_request.approvers().len();
+    if share_count > 255 {
         return Err("Cannot generate >255 shares".into())
     }
-    else if key_gen_request.approvers.len() < key_gen_request.shares_required.into() {
+    else if share_count < key_gen_request.shares_required.into() {
         return Err("Asked to generate fewer shares than required to regenerate key".into())
     }
     let generated = sharksign::generate(
-        &key_gen_request.approvers,
+        &key_gen_request.approvers(),
         key_gen_request.shares_required,
         &key_gen_request.key_config,
     )?;
@@ -135,17 +136,19 @@ mod tests {
     use super::*;
     use actix_web::{test};
     use super::sharksign::test_data;
+    use super::sharksign::data::serde_cert::CertDef;
 
     #[actix_rt::test]
     async fn test_generate() {
         let td = test_data::load_test_data_3_5();
+        let approvers: Vec<CertDef> = td.approvers_pub().into_iter().map(|x| (*x).clone().into()).collect();
         let keygen = json!({
             "keyConfig": {
                 "kind": "Rsa",
                 "userid": "alice@example.org",
                 "size": 2048,
             },
-            "approvers": td.approvers_pub,
+            "approvers": approvers,
             "sharesRequired": 3,
         });
         let state = web::Data::new(State::new());
