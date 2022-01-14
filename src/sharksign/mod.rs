@@ -33,7 +33,7 @@ pub fn decrypt_share(cert: &pgp::Cert, share: data::EncryptedShare) -> Result<da
     })
 }
 
-pub fn generate(approvers: &[&pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, error::SharkSignError> {
+pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, error::SharkSignError> {
     let key = pgp::generate(config)?;
     let tsk_bytes = key.as_tsk().to_vec()?;
 
@@ -88,8 +88,8 @@ mod tests {
 
         
 
-        let generated = generate(&td.approvers_pub(), td.shares_required, &td.config).unwrap();
-        assert_eq!(generated.shares.len(), td.approvers_pub().len());
+        let generated = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
+        assert_eq!(generated.shares.len(), td.approvers_pub.len());
 
         let shares_plaintext: Vec<data::Share> = generated.shares.into_iter().zip(td.approvers_priv().iter()).map(
             move |(share, key)| {

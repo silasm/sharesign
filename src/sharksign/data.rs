@@ -1,6 +1,7 @@
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::convert::TryFrom;
 use serde::{Serialize,Deserialize};
+use sequoia_openpgp::serialize::SerializeInto;
 
 use super::error::SharkSignError;
 use super::pgp::Cert;
@@ -84,6 +85,65 @@ pub mod serde_cert {
     }
 }
 
+pub mod serde_vec_cert {
+    use std::fmt;
+    use sequoia_openpgp::Cert;
+    use sequoia_openpgp::parse::Parse;
+    use sequoia_openpgp::serialize::SerializeInto;
+    use serde::{Serializer, Deserializer};
+    use serde::de::{Visitor, SeqAccess, Error, Unexpected};
+    use serde::ser::SerializeSeq;
+
+    pub fn serialize<S>(vec: &[Cert], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(vec.len()))?;
+        for cert in vec {
+            match cert.armored().to_vec() {
+                Ok(vec_cert) => match String::from_utf8(vec_cert) {
+                    Ok(string) => seq.serialize_element(&string)?,
+                    Err(e) => panic!("armored text is not utf-8: {:?}", e),
+                },
+                Err(e) => panic!("couldn't convert cert to vec: {:?}", e),
+            };
+        }
+        seq.end()
+    }
+
+    struct AsciiArmoredCert;
+    impl <'de> Visitor<'de> for AsciiArmoredCert {
+        type Value = Vec<Cert>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            write!(formatter, "an ascii-armored PGP cert")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>
+        {
+            let mut vec = Vec::<Cert>::with_capacity(seq.size_hint().unwrap_or(0));
+
+            while let Some(s) = seq.next_element::<String>()? {
+                match Cert::from_reader(s.as_bytes()) {
+                    Ok(cert) => vec.push(cert),
+                    Err(_) => return Err(Error::invalid_value(Unexpected::Str(&s), &self)),
+                };
+            };
+            Ok(vec)
+        }
+    }
+
+    pub fn deserialize<'de,D>(deserializer: D) -> Result<Vec<Cert>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(AsciiArmoredCert)
+    }
+
+}
+
 #[derive(Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
@@ -157,23 +217,9 @@ pub struct ShareSubmit {
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Signature {
-    approvers: Vec<serde_cert::CertDef>,
-    signature: Vec<u8>,
-}
-
-impl Signature {
-    #[allow(dead_code)]
-    pub fn new(approvers: Vec<Cert>, signature: &[u8]) -> Self {
-        Signature {
-            approvers: approvers.into_iter().map(|x| x.into()).collect(),
-            signature: Vec::from(signature),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn approvers(&self) -> Vec<&Cert> {
-        self.approvers.iter().map(|x| &**x).collect()
-    }
+    #[serde(with = "serde_vec_cert")]
+    pub approvers: Vec<Cert>,
+    pub signature: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Hash, Clone)]
@@ -193,26 +239,23 @@ pub struct KeyRef {
 pub struct HashDigest {
 }
 
-#[derive(Serialize, Deserialize, Hash)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyGenRequest {
     pub key_config: KeyConfig,
     pub shares_required: u8,
-    approvers: Vec<serde_cert::CertDef>,
+    #[serde(with = "serde_vec_cert")]
+    pub approvers: Vec<Cert>,
 }
 
-impl KeyGenRequest {
-    #[allow(dead_code)]
-    pub fn new(config: KeyConfig, approvers: Vec<Cert>, required: u8) -> Self {
-        KeyGenRequest {
-            key_config: config,
-            approvers: approvers.into_iter().map(|x| x.into()).collect(),
-            shares_required: required,
+impl Hash for KeyGenRequest {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key_config.hash(state);
+        self.shares_required.hash(state);
+        for cert in &self.approvers {
+            let vec = cert.to_vec().unwrap();
+            vec.hash(state);
         }
-    }
-
-    pub fn approvers(&self) -> Vec<&Cert> {
-        self.approvers.iter().map(|x| &**x).collect()
     }
 }
 

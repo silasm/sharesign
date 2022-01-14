@@ -30,6 +30,8 @@ pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
 
 pub fn sign(tsk: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     let policy = &StandardPolicy::new();
+    // clippy doesn't need to complain about sequoia's example code
+    #[allow(clippy::iter_nth_zero)]
     let keypair = tsk
         .keys().unencrypted_secret()
         .with_policy(policy, None).alive().revoked(false).for_signing()
@@ -234,7 +236,7 @@ mod tests {
         // to tests in other modules
         let td = test_data::load_test_data_3_5();
 
-        let cert = &td.approvers_pub()[0];
+        let cert = &td.approvers_pub[0];
         let share_bytes = &td.decrypted_shares()[0].data;
         let tsk = &td.approvers_priv()[0];
 
@@ -250,7 +252,7 @@ mod tests {
     fn test_sign_verify() {
         let td = test_data::load_test_data_3_5();
         let tsk = &td.approvers_priv()[0];
-        let cert = &td.approvers_pub()[0];
+        let cert = &td.approvers_pub[0];
         let payload = &"Sign me!".as_bytes();
 
         let signature = sign(tsk, payload).unwrap();

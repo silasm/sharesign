@@ -34,14 +34,9 @@ pub fn generate_tsks(total: u8) -> Vec<Cert> {
     }).collect()
 }
 
-fn to_references<T>(objs: &[T]) -> Vec<&T> {
-    objs.iter().map(|x| x).collect()
-}
-
 pub fn generate_test_data(config: &data::KeyConfig, total: u8, required: u8) -> TestData {
     let approvers = generate_tsks(total);
-    let approvers_ref: Vec<&Cert> = to_references(&approvers);
-    let generated = sharksign::generate(&approvers_ref, required, config).unwrap();
+    let generated = sharksign::generate(&approvers, required, config).unwrap();
     TestData::new(
         config.clone(),
         generated.pubkey,
