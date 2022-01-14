@@ -39,7 +39,7 @@ impl TestData {
     pub fn decrypted_shares(&self) -> Vec<data::Share> {
         self.shares.clone().into_iter().zip(self.approvers_priv().iter())
             .map(|(share, key)| {
-                super::decrypt_share(&key, share).unwrap()
+                share.decrypt(&key).unwrap()
             })
             .collect()
     }
@@ -48,6 +48,11 @@ impl TestData {
     pub fn approvers_priv(&self) -> Vec<Cert> {
         use openpgp::parse::Parse;
         self.approvers_priv.iter().map(|x| Cert::from_reader(x.as_bytes()).unwrap()).collect()
+    }
+
+    #[cfg(test)]
+    pub fn verifier(&self) -> Cert {
+        self.pubkey.cert().unwrap()
     }
 }
 

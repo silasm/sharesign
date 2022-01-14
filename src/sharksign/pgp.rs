@@ -28,7 +28,7 @@ pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
     Ok(cert)
 }
 
-pub fn sign(tsk: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
+pub fn sign(tsk: &Cert, payload: &[u8], attached: bool) -> Result<Vec<u8>, SharkSignError> {
     let policy = &StandardPolicy::new();
     // clippy doesn't need to complain about sequoia's example code
     #[allow(clippy::iter_nth_zero)]
@@ -40,7 +40,12 @@ pub fn sign(tsk: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
     let mut sink = Vec::<u8>::new();
     let message = Message::new(&mut sink);
     let message = Armorer::new(message).kind(armor::Kind::Signature).build()?;
-    let mut message = Signer::new(message, keypair).detached().build()?;
+    let mut message = if ! attached {
+        Signer::new(message, keypair).detached().build()
+    } else {
+        let message = Signer::new(message, keypair).build()?;
+        LiteralWriter::new(message).build()
+    }?;
 
     message.write_all(payload)?;
     message.finalize()?;
@@ -74,13 +79,17 @@ pub fn encrypt(cert: &Cert, payload: &[u8]) -> Result<Encrypted, SharkSignError>
 
 pub mod verify {
     extern crate sequoia_openpgp as openpgp;
+    use std::io;
     use super::Cert;
-    use openpgp::parse::stream::{DetachedVerifierBuilder, VerificationHelper, MessageStructure, MessageLayer};
+    use openpgp::parse::stream::{VerifierBuilder, VerificationHelper, MessageStructure, MessageLayer};
     use openpgp::parse::Parse;
     use openpgp::policy::StandardPolicy;
     use super::super::error::{SharkSignError};
 
+    #[cfg(test)]
     pub fn verify(sender: &Cert, payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
+        use openpgp::parse::stream::DetachedVerifierBuilder;
+
         let policy = &StandardPolicy::new();
 
         let helper = Helper {
@@ -91,6 +100,20 @@ pub mod verify {
             .with_policy(policy, None, helper)?;
 
         Ok(verifier.verify_bytes(payload)?)
+    }
+
+    pub fn verify_attached(sender: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
+        let policy = &StandardPolicy::new();
+        let mut sink = Vec::<u8>::new();
+
+        let helper = Helper {
+            cert: sender,
+        };
+
+        let mut verifier = VerifierBuilder::from_bytes(payload)?
+            .with_policy(policy, None, helper)?;
+        io::copy(&mut verifier, &mut sink)?;
+        Ok(sink)
     }
 
     struct Helper<'a> {
@@ -237,10 +260,11 @@ mod tests {
         let td = test_data::load_test_data_3_5();
 
         let cert = &td.approvers_pub[0];
-        let share_bytes = &td.decrypted_shares()[0].data;
+        let verify = openpgp::cert::Cert::from_reader(td.pubkey.pem.as_bytes()).unwrap();
+        let share_bytes = &td.decrypted_shares()[0].data(&verify).unwrap();
         let tsk = &td.approvers_priv()[0];
 
-        let ciphertext = encrypt(cert, share_bytes).unwrap();
+        let ciphertext = encrypt(cert, &Vec::from(share_bytes)).unwrap();
         let decrypted = decrypt::decrypt(tsk, &ciphertext).unwrap();
 
         // first byte of sharks shares is the x-intercept, always cardinally
@@ -255,7 +279,7 @@ mod tests {
         let cert = &td.approvers_pub[0];
         let payload = &"Sign me!".as_bytes();
 
-        let signature = sign(tsk, payload).unwrap();
+        let signature = sign(tsk, payload, false).unwrap();
         verify::verify(cert, payload, &signature).unwrap();
     }
 }

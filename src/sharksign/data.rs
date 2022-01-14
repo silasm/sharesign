@@ -1,10 +1,11 @@
 use std::hash::{Hash, Hasher};
-use std::convert::TryFrom;
+use std::convert::TryInto;
 use serde::{Serialize,Deserialize};
 use sequoia_openpgp::serialize::SerializeInto;
 
 use super::error::SharkSignError;
 use super::pgp::Cert;
+use super::pgp;
 
 pub mod serde_vec_cert {
     use std::fmt;
@@ -68,21 +69,36 @@ pub mod serde_vec_cert {
 #[derive(Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
-    pub data: Vec<u8>,
-    pub signature: String,
+    data: Vec<u8>,
+}
+
+impl Share {
+    pub fn data(&self, verify: &Cert) -> Result<sharks::Share,SharkSignError> {
+        let bytes = pgp::verify::verify_attached(verify, &self.data)?;
+        Ok(bytes.as_slice().try_into()?)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedShare {
-    pub encrypted: Encrypted,
-    pub signature: String,
+    encrypted: Encrypted,
 }
 
-impl TryFrom<&Share> for sharks::Share {
-    type Error = SharkSignError;
-    fn try_from(value: &Share) -> Result<sharks::Share, SharkSignError> {
-        Ok(sharks::Share::try_from(value.data.as_slice())?)
+impl EncryptedShare {
+    pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SharkSignError> {
+        let signed = pgp::sign(sign, &Vec::from(&data), true)?;
+        let encrypted = pgp::encrypt(encrypt, &signed)?;
+        Ok(EncryptedShare {
+            encrypted,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SharkSignError> {
+        Ok(Share {
+            data: pgp::decrypt::decrypt(decrypt, &self.encrypted)?,
+        })
     }
 }
 
@@ -150,6 +166,14 @@ pub struct PubKey {
     pub pem: String,
 }
 
+impl PubKey {
+    #[cfg(test)]
+    pub fn cert(&self) -> Result<Cert, SharkSignError> {
+        use sequoia_openpgp::parse::Parse;
+        Ok(sequoia_openpgp::Cert::from_reader(self.pem.as_bytes())?)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyRef {
@@ -185,4 +209,25 @@ impl Hash for KeyGenRequest {
 pub struct Encrypted {
     pub data: String,
     pub pubkey: KeyRef,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_data;
+    use sequoia_openpgp::parse::Parse;
+
+    #[test]
+    fn test_decrypt_and_verify_share() {
+        let td = test_data::load_test_data_3_5();
+
+        let encrypted_share = td.shares[0].clone();
+        println!("encrypted: {}", encrypted_share.encrypted.data);
+
+        let decrypted = encrypted_share.decrypt(&td.approvers_priv()[0]).unwrap();
+        println!("decrypted: {}", String::from_utf8_lossy(&decrypted.data));
+
+        let verifier = sequoia_openpgp::Cert::from_reader(td.pubkey.pem.as_bytes()).unwrap();
+        let verified = decrypted.data(&verifier).unwrap();
+        println!("verified: {}", String::from_utf8_lossy(&Vec::from(&verified)));
+    }
 }
