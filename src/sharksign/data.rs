@@ -1,17 +1,47 @@
 use std::hash::{Hash, Hasher};
 use std::convert::TryInto;
-use serde::{Serialize,Deserialize};
-use sequoia_openpgp::serialize::SerializeInto;
+use serde::{Serialize, Deserialize};
 
 use super::error::SharkSignError as SSE;
 use super::pgp::Cert;
 use super::pgp;
 
+pub mod cert_traits {
+    use std::hash::{Hash, Hasher};
+    use sequoia_openpgp::Cert;
+    use sequoia_openpgp::serialize::SerializeInto;
+    use serde::Serializer;
+
+    pub fn cert_to_armored<S>(cert: &Cert) -> Result<String, S::Error>
+    where
+        S: Serializer
+    {
+        match cert.armored().to_vec() {
+            Ok(vec_cert) => match String::from_utf8(vec_cert) {
+                Ok(string) => Ok(string),
+                Err(e) => {
+                    let message = format!("armored text is not utf-8: {:?}", e);
+                    Err(serde::ser::Error::custom(message))
+                },
+            },
+            Err(e) => {
+                let message = format!("couldn't convert cert to vec: {:?}", e);
+                Err(serde::ser::Error::custom(message))
+            },
+        }
+    }
+
+    pub fn hash<H: Hasher>(cert: &Cert, state: &mut H) {
+        let vec = cert.to_vec().unwrap();
+        vec.hash(state);
+    }
+}
+
+
 pub mod serde_vec_cert {
     use std::fmt;
     use sequoia_openpgp::Cert;
     use sequoia_openpgp::parse::Parse;
-    use sequoia_openpgp::serialize::SerializeInto;
     use serde::{Serializer, Deserializer};
     use serde::de::{Visitor, SeqAccess, Error, Unexpected};
     use serde::ser::SerializeSeq;
@@ -22,19 +52,15 @@ pub mod serde_vec_cert {
     {
         let mut seq = serializer.serialize_seq(Some(vec.len()))?;
         for cert in vec {
-            match cert.armored().to_vec() {
-                Ok(vec_cert) => match String::from_utf8(vec_cert) {
-                    Ok(string) => seq.serialize_element(&string)?,
-                    Err(e) => panic!("armored text is not utf-8: {:?}", e),
-                },
-                Err(e) => panic!("couldn't convert cert to vec: {:?}", e),
-            };
+            seq.serialize_element(
+                &super::cert_traits::cert_to_armored::<S>(cert)?
+            )?;
         }
         seq.end()
     }
 
-    struct AsciiArmoredCert;
-    impl <'de> Visitor<'de> for AsciiArmoredCert {
+    struct AsciiArmoredCertVec;
+    impl <'de> Visitor<'de> for AsciiArmoredCertVec {
         type Value = Vec<Cert>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -61,7 +87,7 @@ pub mod serde_vec_cert {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_seq(AsciiArmoredCert)
+        deserializer.deserialize_seq(AsciiArmoredCertVec)
     }
 
 }
@@ -131,7 +157,6 @@ pub struct KeyConfig {
 
 // publishable results of generating a key
 #[derive(Serialize, Hash, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct GeneratedKey {
     pub pubkey: PubKey,
     pub config: KeyConfig,
@@ -201,8 +226,7 @@ impl Hash for KeyGenRequest {
         self.key_config.hash(state);
         self.shares_required.hash(state);
         for cert in &self.approvers {
-            let vec = cert.to_vec().unwrap();
-            vec.hash(state);
+            cert_traits::hash(cert, state);
         }
     }
 }
