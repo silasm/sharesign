@@ -5,19 +5,10 @@ extern crate sequoia_openpgp as openpgp;
 use openpgp::serialize::stream::*;
 use openpgp::policy::StandardPolicy;
 use openpgp::armor;
-use openpgp::serialize::SerializeInto;
 pub use openpgp::Cert;
 
-use super::data::{Encrypted, KeyRef, KeyConfig, PubKey};
+use super::data::{Encrypted, KeyRef, KeyConfig};
 use super::error::SharkSignError as SSE;
-
-pub fn public_from_private(config: &KeyConfig, cert: Cert) -> PubKey {
-    PubKey {
-        kind: config.kind,
-        // serializing without converting to TSK already strips secret key data
-        pem: String::from_utf8(cert.armored().to_vec().unwrap()).unwrap(),
-    }
-}
 
 pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
     // TODO: should respect more fields in config
@@ -247,7 +238,7 @@ mod tests {
     fn generate_cert_export_import() {
         let td = test_data::load_test_data_3_5();
         
-        let cert = generate(&td.config).unwrap();
+        let cert = generate(&td.generated.config).unwrap();
         let armor = cert.armored().to_vec().unwrap();
         openpgp::cert::Cert::from_reader(armor.as_slice()).unwrap();
     }
@@ -260,7 +251,7 @@ mod tests {
         let td = test_data::load_test_data_3_5();
 
         let cert = &td.approvers_pub[0];
-        let verify = openpgp::cert::Cert::from_reader(td.pubkey.pem.as_bytes()).unwrap();
+        let verify = td.generated.pubkey.clone();
         let share_bytes = &td.decrypted_shares()[0].data(&verify).unwrap();
         let tsk = &td.approvers_priv()[0];
 

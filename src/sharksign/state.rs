@@ -110,9 +110,9 @@ mod tests {
         let share = td.decrypted_shares()[0].clone();
         let submit = SignRequestSubmit {
             payload: Vec::from("Sign me!".as_bytes()),
-            key_config: td.config,
+            key_config: td.generated.config,
             expires: None,
-            pubkey: Some(td.pubkey),
+            pubkey: Some(PubKey::from(&td.generated.pubkey)),
         };
         let mut req = SignRequest::from(submit);
         req.submit_share(share).unwrap();

@@ -66,7 +66,7 @@ mod tests {
     fn test_generate_shares_rsa_2048() {
         let td = test_data::load_test_data_3_5();
 
-        let generated = generate(&td.approvers_pub, td.shares_required, &td.config).unwrap();
+        let generated = generate(&td.approvers_pub, td.shares_required, &td.generated.config).unwrap();
         assert_eq!(generated.shares.len(), td.approvers_pub.len());
 
         let shares_plaintext: Vec<data::Share> = generated.shares.into_iter().zip(td.approvers_priv().iter()).map(
@@ -94,9 +94,7 @@ mod tests {
 
         let cert = recover(3, &shares, &td.verifier()).unwrap();
         let cert = sequoia_openpgp::Cert::from_reader(cert.as_slice()).unwrap();
-        let public_cert = pgp::public_from_private(&td.config, cert);
-        let cert = pgp::Cert::from_reader(public_cert.pem.as_bytes()).unwrap();
-        
-        pgp::verify::verify(&cert, &payload, &signature.signature).unwrap();
+
+        pgp::verify::verify(&cert.strip_secret_key_material(), &payload, &signature.signature).unwrap();
     }
 }

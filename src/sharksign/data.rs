@@ -311,13 +311,6 @@ pub struct PubKey {
     pub pem: String,
 }
 
-impl PubKey {
-    #[cfg(test)]
-    pub fn cert(&self) -> Result<Cert, SSE> {
-        Ok(sequoia_openpgp::Cert::from_reader(self.pem.as_bytes())?)
-    }
-}
-
 impl From<&Cert> for PubKey {
     fn from(result: &Cert) -> PubKey {
         let ArmoredCert(pem) = ArmoredCert::try_from(result).unwrap();
@@ -367,19 +360,18 @@ pub struct Encrypted {
 #[cfg(test)]
 mod tests {
     use super::super::test_data;
-    use sequoia_openpgp::parse::Parse;
 
     #[test]
     fn test_decrypt_and_verify_share() {
         let td = test_data::load_test_data_3_5();
 
-        let encrypted_share = td.shares[0].clone();
+        let encrypted_share = td.generated.shares[0].clone();
         println!("encrypted: {}", encrypted_share.encrypted.data);
 
         let decrypted = encrypted_share.decrypt(&td.approvers_priv()[0]).unwrap();
         println!("decrypted: {}", String::from_utf8_lossy(&decrypted.data));
 
-        let verifier = sequoia_openpgp::Cert::from_reader(td.pubkey.pem.as_bytes()).unwrap();
+        let verifier = td.generated.pubkey;
         let verified = decrypted.data(&verifier).unwrap();
         println!("verified: {}", String::from_utf8_lossy(&Vec::from(&verified)));
     }

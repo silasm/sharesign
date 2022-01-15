@@ -7,9 +7,7 @@ use super::pgp::Cert;
 
 #[derive(Serialize, Deserialize)]
 pub struct TestData {
-    pub config: data::KeyConfig,
-    pub pubkey: data::PubKey,
-    pub shares: Vec<data::EncryptedShare>,
+    pub generated: data::GeneratedKey,
     pub shares_required: u8,
     #[serde(with="data::serde_vec_cert")]
     pub approvers_pub: Vec<Cert>,
@@ -20,15 +18,13 @@ pub struct TestData {
 
 impl TestData {
     #[allow(dead_code)]
-    pub fn new(config: data::KeyConfig, pubkey: data::PubKey, shares: Vec<data::EncryptedShare>, shares_required: u8, approvers_pub: Vec<Cert>) -> TestData {
+    pub fn new(generated: data::GeneratedKey, shares_required: u8, approvers_pub: Vec<Cert>) -> TestData {
         let approvers_priv = approvers_pub.iter().map(|x| {
             let vec = x.as_tsk().armored().to_vec().unwrap();
             String::from_utf8(vec).unwrap()
         }).collect();
         TestData {
-            config,
-            pubkey,
-            shares,
+            generated,
             shares_required,
             approvers_pub,
             approvers_priv,
@@ -37,7 +33,7 @@ impl TestData {
 
     #[cfg(test)]
     pub fn decrypted_shares(&self) -> Vec<data::Share> {
-        self.shares.clone().into_iter().zip(self.approvers_priv().iter())
+        self.generated.shares.clone().into_iter().zip(self.approvers_priv().iter())
             .map(|(share, key)| {
                 share.decrypt(&key).unwrap()
             })
@@ -52,7 +48,7 @@ impl TestData {
 
     #[cfg(test)]
     pub fn verifier(&self) -> Cert {
-        self.pubkey.cert().unwrap()
+        self.generated.pubkey.clone()
     }
 }
 
