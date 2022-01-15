@@ -1,6 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::convert::TryInto;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer};
+use serde::ser::SerializeStruct;
 
 use super::error::SharkSignError as SSE;
 use super::pgp::Cert;
@@ -156,12 +157,35 @@ pub struct KeyConfig {
 }
 
 // publishable results of generating a key
-#[derive(Serialize, Hash, Clone)]
+#[derive(Clone)]
 pub struct GeneratedKey {
-    pub pubkey: PubKey,
+    pub pubkey: Cert,
     pub config: KeyConfig,
     pub shares: Vec<EncryptedShare>,
 }
+
+impl Serialize for GeneratedKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("GeneratedKey", 3)?;
+        state.serialize_field("pubkey", &cert_traits::cert_to_armored::<S>(&self.pubkey)?)?;
+        state.serialize_field("config", &self.config)?;
+        state.serialize_field("shares", &self.shares)?;
+        state.end()
+    }
+}
+
+impl Hash for GeneratedKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        cert_traits::hash(&self.pubkey, state);
+        self.config.hash(state);
+        self.shares.hash(state);
+    }
+}
+
+
 
 #[derive(Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]

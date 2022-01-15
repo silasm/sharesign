@@ -27,7 +27,7 @@ pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyCo
         shares.push(data::EncryptedShare::new(shark, &key, cert)?);
     }
     Ok(data::GeneratedKey {
-        pubkey: pgp::public_from_private(config, key),
+        pubkey: key.strip_secret_key_material(),
         config: config.clone(),
         shares,
     })
@@ -74,7 +74,7 @@ mod tests {
                 share.decrypt(&key).unwrap()
             }
         ).collect();
-        recover(td.shares_required, &shares_plaintext, &generated.pubkey.cert().unwrap()).unwrap();
+        recover(td.shares_required, &shares_plaintext, &generated.pubkey).unwrap();
     }
 
     #[test]

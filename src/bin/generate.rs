@@ -2,6 +2,7 @@ extern crate sequoia_openpgp as openpgp;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
+use openpgp::serialize::SerializeInto;
 
 #[path = "../sharksign/mod.rs"]
 mod sharksign;
@@ -37,9 +38,13 @@ pub fn generate_tsks(total: u8) -> Vec<Cert> {
 pub fn generate_test_data(config: &data::KeyConfig, total: u8, required: u8) -> TestData {
     let approvers = generate_tsks(total);
     let generated = sharksign::generate(&approvers, required, config).unwrap();
+    let armored = String::from_utf8(generated.pubkey.armored().to_vec().unwrap()).unwrap();
     TestData::new(
         config.clone(),
-        generated.pubkey,
+        data::PubKey {
+            pem: armored,
+            kind: data::KeyKind::Rsa,
+        },
         generated.shares,
         required,
         approvers,
