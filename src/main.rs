@@ -1,11 +1,11 @@
-use actix_web::{ http, web, App, HttpResponse, HttpServer, Responder };
+use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use serde_json::json;
 
 mod sharksign;
 use sharksign::data;
-use sharksign::error;
 use sharksign::state;
 use sharksign::state::{State, ID};
+use sharksign::error::SharkSignError as SSE;
 
 async fn startsign(state: web::Data<State>, submission: web::Json<data::SignRequestSubmit>) -> impl Responder {
     let id = state::get_id(&*submission);
@@ -38,7 +38,7 @@ async fn showsigns(state: web::Data<State>) -> impl Responder {
     HttpResponse::Ok().json(signs)
 }
 
-async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json<data::ShareSubmit>) -> Result<web::Json<()>, error::SharkSignError> {
+async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json<data::ShareSubmit>) -> Result<web::Json<()>, SSE> {
     let mut sign_requests = state.sign_requests.lock().unwrap();
     match sign_requests.get_mut(&*id) {
         Some(sign_request) => {
@@ -46,22 +46,16 @@ async fn submitshare(state: web::Data<State>, id: web::Path<ID>, json: web::Json
             Ok(web::Json(()))
         },
         None => {
-            Err(error::SharkSignError::from(format!("sign request with id {} not found", id)).with_status(http::StatusCode::NOT_FOUND))
+            Err(SSE::SignRequestNotFound(*id))
         }
     }
 }
 
-async fn showsign(state: web::Data<State>, id: web::Path<ID>) -> impl Responder {
+async fn showsign(state: web::Data<State>, id: web::Path<ID>) -> Result<web::Json<state::SignRequest>, SSE> {
     let sign_requests = state.sign_requests.lock().unwrap();
     match sign_requests.get(&*id) {
-        Some(sign_request) => (
-            Ok(web::Json(sign_request.clone())),
-            http::StatusCode::OK,
-        ),
-        None => (
-            Err(error::SharkSignError::from(format!("sign request with id {} not found", id))),
-            http::StatusCode::NOT_FOUND,
-        )
+        Some(sign_request) => Ok(web::Json(sign_request.clone())),
+        None => Err(SSE::SignRequestNotFound(*id)),
     }
 }
 
@@ -69,13 +63,13 @@ async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl 
     HttpResponse::Ok().json(())
 }
 
-async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, error::SharkSignError> {
+async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, SSE> {
     let share_count = key_gen_request.approvers.len();
     if share_count > 255 {
-        return Err("Cannot generate >255 shares".into())
+        return Err(SSE::Config("Cannot generate >255 shares".to_owned()))
     }
     else if share_count < key_gen_request.shares_required.into() {
-        return Err("Asked to generate fewer shares than required to regenerate key".into())
+        return Err(SSE::Config("Refusing to generate fewer shares than required to regenerate key".to_owned()))
     }
     let generated = sharksign::generate(
         &key_gen_request.approvers,
@@ -134,7 +128,7 @@ async fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test};
+    use actix_web::{test, http};
     use super::sharksign::test_data;
     use sequoia_openpgp::serialize::SerializeInto;
 

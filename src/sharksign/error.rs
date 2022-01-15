@@ -1,88 +1,40 @@
-use std::fmt;
 use anyhow;
-use std::error::Error;
-use actix_web::{http, HttpResponse, dev::HttpResponseBuilder, ResponseError};
+use actix_web::{HttpResponse, dev::HttpResponseBuilder, ResponseError};
 use serde_json::json;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum SharkSignErrorType {
-    String(String),
-    Pgp(anyhow::Error),
-    IO(std::io::Error),
+#[derive(Debug, Error)]
+pub enum SharkSignError {
+    #[error("No SignRequest with ID: {0:?}")]
+    SignRequestNotFound(super::state::ID),
+    #[error("Key recovery error: {0:?}")]
+    KeyRecovery(String),
+    #[error("Invalid configuration: {0:?}")]
+    Config(String),
+    #[error("PGP error: {source:?}")]
+    Pgp {
+        #[from]
+        source: anyhow::Error,
+    },
+    #[error("I/O error: {source:?}")]
+    IO {
+        #[from]
+        source: std::io::Error,
+    },
+    #[error("Unexpected error: {0:?}")]
+    Unexpected(String),
 }
 
-#[derive(Debug)]
-pub struct SharkSignError {
-    err: SharkSignErrorType,
-    status: http::StatusCode,
-}
-
-impl SharkSignError {
-    pub fn with_status(mut self, status: http::StatusCode) -> Self {
-        self.status = status;
-        self
-    }
-}
-
-impl fmt::Display for SharkSignError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.err {
-            SharkSignErrorType::String(e) => write!(f, "Internal Error {}: {}", self.status, e),
-            SharkSignErrorType::Pgp(e) => write!(f, "PGP Error {} : {}", self.status, e),
-            SharkSignErrorType::IO(e) => write!(f, "I/O Error {} : {}", self.status, e),
-        }
-    }
-}
-
-impl From<String> for SharkSignError {
-    fn from(result: String) -> SharkSignError {
-        SharkSignError {
-            err: SharkSignErrorType::String(result),
-            status: http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl From<&str> for SharkSignError {
-    fn from(result: &str) -> SharkSignError {
-        SharkSignError {
-            err: SharkSignErrorType::String(result.to_owned()),
-            status: http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl From<anyhow::Error> for SharkSignError {
-    fn from(result: anyhow::Error) -> SharkSignError {
-        SharkSignError {
-            err: SharkSignErrorType::Pgp(result),
-            status: http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl From<std::io::Error> for SharkSignError {
-    fn from(result: std::io::Error) -> SharkSignError {
-        SharkSignError {
-            err: SharkSignErrorType::IO(result),
-            status: http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl<T: Into<SharkSignError>> From<(T, http::StatusCode)> for SharkSignError {
-    fn from(result: (T, http::StatusCode)) -> SharkSignError {
-        let (err, status) = result;
-        err.into().with_status(status)
-    }
-}
-
-
-impl Error for SharkSignError {}
+use SharkSignError as SSE;
+use actix_web::http::StatusCode as HSC;
 
 impl ResponseError for SharkSignError {
-    fn status_code(&self) -> http::StatusCode {
-        self.status
+    fn status_code(&self) -> HSC {
+        match self {
+            SSE::SignRequestNotFound(_) => HSC::NOT_FOUND,
+            SSE::Config(_)              => HSC::BAD_REQUEST,
+            _                           => HSC::INTERNAL_SERVER_ERROR,
+        }
     }
 
     fn error_response(&self) -> HttpResponse {

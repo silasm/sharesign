@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use serde::{Serialize,Deserialize};
 use sequoia_openpgp::serialize::SerializeInto;
 
-use super::error::SharkSignError;
+use super::error::SharkSignError as SSE;
 use super::pgp::Cert;
 use super::pgp;
 
@@ -73,9 +73,12 @@ pub struct Share {
 }
 
 impl Share {
-    pub fn data(&self, verify: &Cert) -> Result<sharks::Share,SharkSignError> {
+    pub fn data(&self, verify: &Cert) -> Result<sharks::Share,SSE> {
         let bytes = pgp::verify::verify_attached(verify, &self.data)?;
-        Ok(bytes.as_slice().try_into()?)
+        match bytes.as_slice().try_into() {
+            Ok(share) => Ok(share),
+            Err(str) => Err(SSE::Unexpected(str.to_owned())),
+        }
     }
 }
 
@@ -86,7 +89,7 @@ pub struct EncryptedShare {
 }
 
 impl EncryptedShare {
-    pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SharkSignError> {
+    pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SSE> {
         let signed = pgp::sign(sign, &Vec::from(&data), true)?;
         let encrypted = pgp::encrypt(encrypt, &signed)?;
         Ok(EncryptedShare {
@@ -95,7 +98,7 @@ impl EncryptedShare {
     }
 
     #[cfg(test)]
-    pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SharkSignError> {
+    pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SSE> {
         Ok(Share {
             data: pgp::decrypt::decrypt(decrypt, &self.encrypted)?,
         })
@@ -168,7 +171,7 @@ pub struct PubKey {
 
 impl PubKey {
     #[cfg(test)]
-    pub fn cert(&self) -> Result<Cert, SharkSignError> {
+    pub fn cert(&self) -> Result<Cert, SSE> {
         use sequoia_openpgp::parse::Parse;
         Ok(sequoia_openpgp::Cert::from_reader(self.pem.as_bytes())?)
     }

@@ -7,6 +7,7 @@ pub mod pgp;
 
 use sequoia_openpgp::serialize::SerializeInto;
 use sequoia_openpgp::parse::Parse;
+use error::SharkSignError as SSE;
 
 // result of signing a payload
 #[allow(dead_code)]
@@ -14,7 +15,7 @@ pub struct Signature {
     signature: Vec<u8>
 }
 
-pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, error::SharkSignError> {
+pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, SSE> {
     let key = pgp::generate(config)?;
     let tsk_bytes = key.as_tsk().to_vec()?;
 
@@ -33,17 +34,20 @@ pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyCo
 }
 
 #[allow(dead_code)]
-fn recover(shares_needed: u8, shares: &[data::Share], verify: &pgp::Cert) -> Result<Vec<u8>, error::SharkSignError> {
+fn recover(shares_needed: u8, shares: &[data::Share], verify: &pgp::Cert) -> Result<Vec<u8>, SSE> {
     let sharks = Sharks(shares_needed);
     let mut sharkshares = Vec::<sharks::Share>::new();
     for share in shares {
         sharkshares.push(share.data(verify)?)
     }
-    Ok(sharks.recover(sharkshares.iter())?)
+    match sharks.recover(sharkshares.iter()) {
+        Ok(bytes) => Ok(bytes),
+        Err(str) => Err(SSE::KeyRecovery(str.to_owned())),
+    }
 }
 
 #[allow(dead_code)]
-pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], verify: &pgp::Cert) -> Result<Signature, error::SharkSignError> {
+pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], verify: &pgp::Cert) -> Result<Signature, SSE> {
     let cert = recover(shares_needed, shares, verify)?;
     let cert = pgp::Cert::from_reader(cert.as_slice())?;
     let signature = pgp::sign(&cert, payload, false)?;

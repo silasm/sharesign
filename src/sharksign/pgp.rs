@@ -9,7 +9,7 @@ use openpgp::serialize::SerializeInto;
 pub use openpgp::Cert;
 
 use super::data::{Encrypted, KeyRef, KeyConfig, PubKey};
-use super::error::{SharkSignError};
+use super::error::SharkSignError as SSE;
 
 pub fn public_from_private(config: &KeyConfig, cert: Cert) -> PubKey {
     PubKey {
@@ -28,7 +28,7 @@ pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
     Ok(cert)
 }
 
-pub fn sign(tsk: &Cert, payload: &[u8], attached: bool) -> Result<Vec<u8>, SharkSignError> {
+pub fn sign(tsk: &Cert, payload: &[u8], attached: bool) -> Result<Vec<u8>, SSE> {
     let policy = &StandardPolicy::new();
     // clippy doesn't need to complain about sequoia's example code
     #[allow(clippy::iter_nth_zero)]
@@ -53,7 +53,7 @@ pub fn sign(tsk: &Cert, payload: &[u8], attached: bool) -> Result<Vec<u8>, Shark
     Ok(sink)
 }
 
-pub fn encrypt(cert: &Cert, payload: &[u8]) -> Result<Encrypted, SharkSignError> {
+pub fn encrypt(cert: &Cert, payload: &[u8]) -> Result<Encrypted, SSE> {
     /* set encryption policy and keys */
     let policy = &StandardPolicy::new();
     let recipients = cert.keys()
@@ -84,10 +84,10 @@ pub mod verify {
     use openpgp::parse::stream::{VerifierBuilder, VerificationHelper, MessageStructure, MessageLayer};
     use openpgp::parse::Parse;
     use openpgp::policy::StandardPolicy;
-    use super::super::error::{SharkSignError};
+    use super::super::error::SharkSignError as SSE;
 
     #[cfg(test)]
-    pub fn verify(sender: &Cert, payload: &[u8], signature: &[u8]) -> Result<(), SharkSignError> {
+    pub fn verify(sender: &Cert, payload: &[u8], signature: &[u8]) -> Result<(), SSE> {
         use openpgp::parse::stream::DetachedVerifierBuilder;
 
         let policy = &StandardPolicy::new();
@@ -102,7 +102,7 @@ pub mod verify {
         Ok(verifier.verify_bytes(payload)?)
     }
 
-    pub fn verify_attached(sender: &Cert, payload: &[u8]) -> Result<Vec<u8>, SharkSignError> {
+    pub fn verify_attached(sender: &Cert, payload: &[u8]) -> Result<Vec<u8>, SSE> {
         let policy = &StandardPolicy::new();
         let mut sink = Vec::<u8>::new();
 
@@ -167,7 +167,7 @@ pub mod decrypt {
     use openpgp::crypto::SessionKey;
     
 
-    pub fn decrypt(tsk: &Cert, encrypted: &Encrypted) -> Result<Vec<u8>, SharkSignError> {
+    pub fn decrypt(tsk: &Cert, encrypted: &Encrypted) -> Result<Vec<u8>, SSE> {
         let policy = openpgp::policy::StandardPolicy::new();
     
         let helper = Helper {

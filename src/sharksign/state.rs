@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature};
-use super::error::SharkSignError;
+use super::error::SharkSignError as SSE;
 use sequoia_openpgp::parse::Parse;
 
 // TODO
@@ -68,7 +68,7 @@ impl SignRequest {
     /// attackers can create a denial of service scenario by submitting
     /// bogus shares, which can interfere with key recovery and/or exhaust
     /// memory.
-    pub fn submit_share(&mut self, share: Share) -> Result<(), SharkSignError> {
+    pub fn submit_share(&mut self, share: Share) -> Result<(), SSE> {
         let _validation = match &self.pubkey {
             Some(pubkey) => {
                 let cert = super::pgp::Cert::from_reader(pubkey.pem.as_bytes())?;
