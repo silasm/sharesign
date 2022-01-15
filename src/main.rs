@@ -9,17 +9,7 @@ use sharksign::error::SharkSignError as SSE;
 
 async fn startsign(state: web::Data<State>, submission: web::Json<data::SignRequestSubmit>) -> impl Responder {
     let id = state::get_id(&*submission);
-    let mut sign_request = state::SignRequest::new(
-        &submission.payload,
-        submission.key_config.clone(),
-    );
-    if let Some(expiration) = submission.expires {
-        sign_request.set_expiration(expiration);
-    }
-    if let Some(pubkey) = &submission.pubkey {
-        sign_request.set_pubkey(pubkey);
-    }
-
+    let sign_request = state::SignRequest::from(submission.clone());
     {
         let mut sign_requests = state.sign_requests.lock().unwrap();
         sign_requests.insert(id, sign_request);

@@ -138,7 +138,7 @@ pub struct GeneratedKey {
     pub shares: Vec<EncryptedShare>,
 }
 
-#[derive(Deserialize, Hash)]
+#[derive(Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SignRequestSubmit {
     pub payload: Vec<u8>,

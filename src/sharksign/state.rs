@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use serde::Serialize;
 
-use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature};
+use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature, SignRequestSubmit};
 use super::error::SharkSignError as SSE;
 use sequoia_openpgp::parse::Parse;
 
@@ -41,27 +41,21 @@ pub struct SignRequest {
     expires: u64, // should be a datetime object
 }
 
-impl SignRequest {
-    pub fn new(payload: &[u8], key_config: KeyConfig) -> Self {
+impl From<SignRequestSubmit> for SignRequest {
+    fn from(result: SignRequestSubmit) -> Self {
         SignRequest {
-            payload: Vec::<u8>::from(payload),
-            key_config,
-            pubkey: None,
+            payload: result.payload,
+            key_config: result.key_config,
+            pubkey: result.pubkey,
             shares_submitted: Vec::<Share>::new(),
             signature: None,
             ctime: now(),
-            expires: default_expire(),
+            expires: result.expires.unwrap_or_else(default_expire),
         }
     }
+}
 
-    pub fn set_expiration(&mut self, expires: u64) {
-        self.expires = expires;
-    }
-
-    pub fn set_pubkey(&mut self, pubkey: &PubKey) {
-        self.pubkey = Some(pubkey.clone());
-    }
-
+impl SignRequest {
     /// If there is a public key associated with the sign request,
     /// validate that the submitted share was signed by the
     /// corresponding private key prior to adding it. Without this,
@@ -114,8 +108,13 @@ mod tests {
         let td = test_data::load_test_data_3_5();
 
         let share = td.decrypted_shares()[0].clone();
-        let mut req = SignRequest::new("Sign me!".as_bytes(), td.config);
-        req.set_pubkey(&td.pubkey);
+        let submit = SignRequestSubmit {
+            payload: Vec::from("Sign me!".as_bytes()),
+            key_config: td.config,
+            expires: None,
+            pubkey: Some(td.pubkey),
+        };
+        let mut req = SignRequest::from(submit);
         req.submit_share(share).unwrap();
     }
 
