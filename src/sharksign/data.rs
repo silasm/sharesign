@@ -1,51 +1,57 @@
+use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::convert::TryInto;
-use serde::{Serialize, Deserialize, Serializer};
+use std::convert::{TryInto, TryFrom};
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::{self, Visitor, SeqAccess, MapAccess, Unexpected};
 use serde::ser::SerializeStruct;
+use sequoia_openpgp::serialize::SerializeInto;
+use sequoia_openpgp::parse::Parse;
 
 use super::error::SharkSignError as SSE;
 use super::pgp::Cert;
 use super::pgp;
 
-pub mod cert_traits {
-    use std::hash::{Hash, Hasher};
-    use sequoia_openpgp::Cert;
-    use sequoia_openpgp::serialize::SerializeInto;
-    use serde::Serializer;
 
-    pub fn cert_to_armored<S>(cert: &Cert) -> Result<String, S::Error>
-    where
-        S: Serializer
-    {
-        match cert.armored().to_vec() {
+#[derive(Serialize, Deserialize, Hash, Clone)]
+pub struct ArmoredCert(String);
+
+impl TryFrom<&Cert> for ArmoredCert {
+    type Error = SSE;
+    fn try_from(result: &Cert) -> Result<ArmoredCert, Self::Error> {
+        match result.armored().to_vec() {
             Ok(vec_cert) => match String::from_utf8(vec_cert) {
-                Ok(string) => Ok(string),
+                Ok(string) => Ok(ArmoredCert(string)),
                 Err(e) => {
                     let message = format!("armored text is not utf-8: {:?}", e);
-                    Err(serde::ser::Error::custom(message))
+                    Err(SSE::Unexpected(message))
                 },
             },
             Err(e) => {
                 let message = format!("couldn't convert cert to vec: {:?}", e);
-                Err(serde::ser::Error::custom(message))
+                Err(SSE::Unexpected(message))
             },
         }
     }
+}
 
-    pub fn hash<H: Hasher>(cert: &Cert, state: &mut H) {
-        let vec = cert.to_vec().unwrap();
-        vec.hash(state);
+impl TryFrom<ArmoredCert> for Cert {
+    type Error = SSE;
+    fn try_from(result: ArmoredCert) -> Result<Cert, Self::Error> {
+        let ArmoredCert(string) = result;
+        Ok(Cert::from_reader(string.as_bytes())?)
     }
 }
 
-
 pub mod serde_vec_cert {
     use std::fmt;
+    use std::convert::TryFrom;
     use sequoia_openpgp::Cert;
     use sequoia_openpgp::parse::Parse;
     use serde::{Serializer, Deserializer};
     use serde::de::{Visitor, SeqAccess, Error, Unexpected};
-    use serde::ser::SerializeSeq;
+    use serde::ser::{self, SerializeSeq};
+
+    use super::ArmoredCert;
 
     pub fn serialize<S>(vec: &[Cert], serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -53,9 +59,10 @@ pub mod serde_vec_cert {
     {
         let mut seq = serializer.serialize_seq(Some(vec.len()))?;
         for cert in vec {
-            seq.serialize_element(
-                &super::cert_traits::cert_to_armored::<S>(cert)?
-            )?;
+            match ArmoredCert::try_from(cert) {
+                Ok(cd) => seq.serialize_element(&cd)?,
+                Err(e) => return Err(ser::Error::custom(format!("{:?}", e))),
+            };
         }
         seq.end()
     }
@@ -170,22 +177,108 @@ impl Serialize for GeneratedKey {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("GeneratedKey", 3)?;
-        state.serialize_field("pubkey", &cert_traits::cert_to_armored::<S>(&self.pubkey)?)?;
+        match ArmoredCert::try_from(&self.pubkey) {
+            Ok(cd) => state.serialize_field("pubkey", &cd)?,
+            Err(e) => return Err(serde::ser::Error::custom(format!("{:?}", e))),
+        };
         state.serialize_field("config", &self.config)?;
         state.serialize_field("shares", &self.shares)?;
         state.end()
     }
 }
 
+impl<'de> Deserialize<'de> for GeneratedKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field { Pubkey, Config, Shares }
+    
+        struct GeneratedKeyVisitor;
+        impl<'de> Visitor<'de> for GeneratedKeyVisitor {
+            type Value = GeneratedKey;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct GeneratedKey")
+            }
+    
+                fn visit_seq<V>(self, mut seq: V) -> Result<GeneratedKey, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let s: String = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let pubkey = match Cert::try_from(ArmoredCert(s.clone())) {
+                    Ok(cert) => cert,
+                    Err(_) => return Err(
+                        de::Error::invalid_value(Unexpected::Str(&s), &self)
+                    ),
+                };
+                let config = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let shares = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                Ok(GeneratedKey { pubkey, config, shares })
+            }
+    
+                fn visit_map<V>(self, mut map: V) -> Result<GeneratedKey, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut pubkey = None;
+                let mut config = None;
+                let mut shares = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Pubkey => {
+                            if pubkey.is_some() {
+                                return Err(de::Error::duplicate_field("pubkey"));
+                            }
+                            let s: String = map.next_value()?;
+                            match Cert::try_from(ArmoredCert(s.clone())) {
+                                Ok(cert) => pubkey = Some(cert),
+                                Err(_) => return Err(
+                                    de::Error::invalid_value(Unexpected::Str(&s), &self)
+                                ),
+                            };
+                        },
+                        Field::Config => {
+                            if config.is_some() {
+                                return Err(de::Error::duplicate_field("config"));
+                            }
+                            config = Some(map.next_value()?);
+                        },
+                        Field::Shares => {
+                            if shares.is_some() {
+                                return Err(de::Error::duplicate_field("shares"));
+                            }
+                            shares = Some(map.next_value()?);
+                        },
+                    }
+                }
+                let pubkey = pubkey.ok_or_else(
+                    || de::Error::missing_field("pubkey"))?;
+                let config = config.ok_or_else(
+                    || de::Error::missing_field("config"))?;
+                let shares = shares.ok_or_else(
+                    || de::Error::missing_field("shares"))?;
+                Ok(GeneratedKey { pubkey, config, shares })
+            }
+        }
+    
+            const FIELDS: &[&str] = &["pubkey", "config", "shares"];
+        deserializer.deserialize_struct("GeneratedKey", FIELDS, GeneratedKeyVisitor)
+    }
+}
+
 impl Hash for GeneratedKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        cert_traits::hash(&self.pubkey, state);
+        ArmoredCert::try_from(&self.pubkey).unwrap().hash(state);
         self.config.hash(state);
         self.shares.hash(state);
     }
 }
-
-
 
 #[derive(Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -221,8 +314,17 @@ pub struct PubKey {
 impl PubKey {
     #[cfg(test)]
     pub fn cert(&self) -> Result<Cert, SSE> {
-        use sequoia_openpgp::parse::Parse;
         Ok(sequoia_openpgp::Cert::from_reader(self.pem.as_bytes())?)
+    }
+}
+
+impl From<&Cert> for PubKey {
+    fn from(result: &Cert) -> PubKey {
+        let ArmoredCert(pem) = ArmoredCert::try_from(result).unwrap();
+        PubKey {
+            kind: KeyKind::Rsa,
+            pem,
+        }
     }
 }
 
@@ -250,7 +352,7 @@ impl Hash for KeyGenRequest {
         self.key_config.hash(state);
         self.shares_required.hash(state);
         for cert in &self.approvers {
-            cert_traits::hash(cert, state);
+            ArmoredCert::try_from(cert).unwrap().hash(state);
         }
     }
 }
