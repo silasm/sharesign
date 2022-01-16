@@ -278,6 +278,8 @@ pub struct KeyConfig {
     pub flags: Vec<KeyFlag>,
     pub validity: Validity,
     pub userid: String,
+    #[serde(with="serde_vec_cert")]
+    pub revocation_keys: Vec<Cert>,
 }
 
 impl Hash for KeyConfig {

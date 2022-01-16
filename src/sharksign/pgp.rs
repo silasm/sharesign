@@ -6,6 +6,7 @@ extern crate sequoia_openpgp as openpgp;
 // use openpgp::cert::prelude::*;
 use openpgp::serialize::stream::*;
 use openpgp::policy::StandardPolicy;
+use openpgp::types::RevocationKey;
 use openpgp::armor;
 pub use openpgp::Cert;
 
@@ -13,13 +14,14 @@ use super::data::{Encrypted, KeyConfig};
 use super::error::SharkSignError as SSE;
 
 pub fn generate(config: &KeyConfig) -> Result<Cert, SSE> {
+    let revoc: Vec<RevocationKey> = config.revocation_keys.iter()
+        .map(RevocationKey::from).collect();
     let mut builder = openpgp::cert::CertBuilder::new()
         .set_cipher_suite(config.cipher_suite)
-        .add_userid(config.userid.clone());
-    builder = builder.set_validity_period(
-        Option::<Duration>::try_from(&config.validity)?
-    );
-    builder = builder.set_primary_key_flags(config.key_flags());
+        .add_userid(config.userid.clone())
+        .set_validity_period(Option::<Duration>::try_from(&config.validity)?)
+        .set_primary_key_flags(config.key_flags())
+        .set_revocation_keys(revoc);
     for subconfig in &config.subkeys {
         builder = builder.add_subkey(
             subconfig.key_flags(),
@@ -28,8 +30,7 @@ pub fn generate(config: &KeyConfig) -> Result<Cert, SSE> {
         );
     }
     // TODO: handle revocation cert somehow.  Can distribute it as a
-    // separate share.  Can also add revocation keys to config via
-    // builder.set_revocation_keys().
+    // separate share or bundled into the main share.
     let (cert, _rev) = builder.generate()?;
     Ok(cert)
 }

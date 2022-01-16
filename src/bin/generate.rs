@@ -22,6 +22,7 @@ fn main() {
         flags: vec![KeyFlag::Certification],
         validity: Validity::DoesNotExpire,
         userid: "alice@example.org".to_string(),
+        revocation_keys: vec![],
     };
     write_test_data(path, &config, 5, 3);
 }

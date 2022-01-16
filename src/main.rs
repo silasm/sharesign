@@ -142,6 +142,7 @@ mod tests {
                 "flags": ["certification"],
                 "validity": "doesNotExpire",
                 "userid": "alice@example.org",
+                "revocationKeys": [],
             },
             "approvers": approvers,
             "sharesRequired": 3,
