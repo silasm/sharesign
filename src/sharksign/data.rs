@@ -210,7 +210,7 @@ impl TryFrom<&Validity> for Option<Duration> {
             Validity::For(d) => Ok(Some(*d)),
             Validity::Until(t) => match t.duration_since(SystemTime::now()) {
                 Ok(d) => Ok(Some(d)),
-                Err(e) => Err(SSE::Config(format!("could not compute duration from provided system time: {:?}", e))),
+                Err(e) => Err(SSE::Config(format!("got negative duration validity: {:?}", e))),
             },
         }
     }
