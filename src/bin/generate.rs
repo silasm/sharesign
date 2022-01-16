@@ -6,16 +6,22 @@ use std::path::Path;
 #[path = "../sharksign/mod.rs"]
 mod sharksign;
 use sharksign::test_data::TestData;
-use sharksign::data;
-use sharksign::pgp::Cert;
+use sharksign::data::{self, KeyFlags, Validity, CipherSuite, Cert};
 
 fn main() {
     let path = Path::new("test_data/3_5.json");
     let config = data::KeyConfig {
-        kind: data::KeyKind::Rsa,
+        cipher_suite: CipherSuite::RSA2k,
+        subkeys: vec![
+            data::SubkeyConfig {
+                cipher_suite: CipherSuite::RSA2k,
+                flags: vec![KeyFlags::Signing],
+                validity: Validity::DoesNotExpire,
+            },
+        ],
+        flags: vec![KeyFlags::Certification],
+        validity: Validity::DoesNotExpire,
         userid: "alice@example.org".to_string(),
-        size: 2048,
-        digest: None,
     };
     write_test_data(path, &config, 5, 3);
 }

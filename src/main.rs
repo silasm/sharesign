@@ -131,9 +131,17 @@ mod tests {
         }).collect();
         let keygen = json!({
             "keyConfig": {
-                "kind": "Rsa",
+                "cipherSuite": "RSA2k",
+                "subkeys": [
+                    {
+                        "cipherSuite": "RSA2k",
+                        "flags": ["signing"],
+                        "validity": "doesNotExpire"
+                    }
+                ],
+                "flags": ["certification"],
+                "validity": "doesNotExpire",
                 "userid": "alice@example.org",
-                "size": 2048,
             },
             "approvers": approvers,
             "sharesRequired": 3,

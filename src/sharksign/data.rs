@@ -1,14 +1,17 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::convert::{TryInto, TryFrom};
+use std::time::{Duration, SystemTime};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Visitor, SeqAccess, MapAccess, Unexpected};
 use serde::ser::SerializeStruct;
 use sequoia_openpgp::serialize::SerializeInto;
 use sequoia_openpgp::parse::Parse;
 
+pub use sequoia_openpgp::cert::prelude::CipherSuite;
+pub use sequoia_openpgp::Cert;
+
 use super::error::SharkSignError as SSE;
-use super::pgp::Cert;
 use super::pgp;
 
 
@@ -145,23 +148,111 @@ pub enum KeyKind {
     Unknown, // just to get rid of "impossible match" warnings
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
-pub enum MessageDigest {
-    SHA256,
-    Unknown, // just to get rid of "impossible match" warnings
-}
-
-// configuration for generating a key
+/// Flags that can be set when generating a key or subkey
 #[derive(Serialize, Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct KeyConfig {
-    pub kind: KeyKind,
-    pub userid: String,
-    pub size: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub digest: Option<MessageDigest>,
+pub enum KeyFlags {
+    /// Private key can be used to sign other keys
+    Certification,
+    /// Private key can be used to sign data
+    Signing,
+    /// Public key can be used to encrypt messages for transport
+    TransportEncryption,
+    /// Public key can be used to encrypt data for storage (e.g. backups)
+    StorageEncryption,
+    /// Private key can be used to authenticate to other systems
+    Authentication,
+    /// Private key may be split using a sharing scheme (e.g. sharesign itself)
+    Split,
+    /// Private key may be owned in full by more than one individual
+    Group,
 }
+
+/// How long before the key expires, if it expires at all.
+///
+/// Can be sent as For(Duration) but will be immediately converted to
+/// Until(SystemTime) for consistent display. Note that PGP certs don't
+/// track time especially precisely, so e.g. nanosecond specifications
+/// will be dropped by sequoia.
+#[derive(Serialize, Deserialize, Hash, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum Validity {
+    /// The key does not expire
+    DoesNotExpire,
+    /// The key expires after creation time + duration
+    For(Duration),
+    /// The key expires at a particular point in time
+    Until(SystemTime),
+}
+
+/// shim to derive for remote CipherSuite type
+#[derive(Serialize, Deserialize, Hash)]
+#[serde(remote = "CipherSuite")]
+enum CipherSuiteDef {
+    Cv25519,
+    RSA3k,
+    P256,
+    P384,
+    P521,
+    RSA2k,
+    RSA4k,
+}
+
+// convenient for impl Hash below
+impl From<CipherSuite> for CipherSuiteDef {
+    fn from(result: CipherSuite) -> CipherSuiteDef {
+        match result {
+            CipherSuite::Cv25519 => CipherSuiteDef::Cv25519,
+            CipherSuite::RSA3k => CipherSuiteDef::RSA3k,
+            CipherSuite::P256 => CipherSuiteDef::P256,
+            CipherSuite::P384 => CipherSuiteDef::P384,
+            CipherSuite::P521 => CipherSuiteDef::P521,
+            CipherSuite::RSA2k => CipherSuiteDef::RSA2k,
+            CipherSuite::RSA4k => CipherSuiteDef::RSA4k,
+        }
+    }
+}
+
+/// Configuration for generating a subkey
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SubkeyConfig {
+    #[serde(with = "CipherSuiteDef")]
+    pub cipher_suite: CipherSuite,
+    pub flags: Vec<KeyFlags>,
+    pub validity: Validity,
+}
+
+impl Hash for SubkeyConfig {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        CipherSuiteDef::from(self.cipher_suite).hash(state);
+        self.flags.hash(state);
+        self.validity.hash(state);
+    }
+}
+
+/// Configuration for generating a primary key and subkeys
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyConfig {
+    #[serde(with = "CipherSuiteDef")]
+    pub cipher_suite: CipherSuite,
+    pub subkeys: Vec<SubkeyConfig>,
+    pub flags: Vec<KeyFlags>,
+    pub validity: Validity,
+    pub userid: String,
+}
+
+impl Hash for KeyConfig {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        CipherSuiteDef::from(self.cipher_suite).hash(state);
+        self.subkeys.hash(state);
+        self.flags.hash(state);
+        self.validity.hash(state);
+        self.userid.hash(state);
+    }
+}
+
 
 // publishable results of generating a key
 #[derive(Clone)]
