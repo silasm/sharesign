@@ -1,4 +1,6 @@
 use std::io::Write;
+use std::time::Duration;
+use std::convert::TryFrom;
 
 extern crate sequoia_openpgp as openpgp;
 // use openpgp::cert::prelude::*;
@@ -10,12 +12,25 @@ pub use openpgp::Cert;
 use super::data::{Encrypted, KeyConfig};
 use super::error::SharkSignError as SSE;
 
-pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
-    // TODO: should respect more fields in config
-    let (cert, _revocation) = openpgp::cert::CertBuilder::new()
-        .add_userid(config.userid.clone())
-        .add_signing_subkey()
-        .generate()?;
+pub fn generate(config: &KeyConfig) -> Result<Cert, SSE> {
+    let mut builder = openpgp::cert::CertBuilder::new()
+        .set_cipher_suite(config.cipher_suite)
+        .add_userid(config.userid.clone());
+    builder = builder.set_validity_period(
+        Option::<Duration>::try_from(&config.validity)?
+    );
+    builder = builder.set_primary_key_flags(config.key_flags());
+    for subconfig in &config.subkeys {
+        builder = builder.add_subkey(
+            subconfig.key_flags(),
+            Option::<Duration>::try_from(&subconfig.validity)?,
+            subconfig.cipher_suite,
+        );
+    }
+    // TODO: handle revocation cert somehow.  Can distribute it as a
+    // separate share.  Can also add revocation keys to config via
+    // builder.set_revocation_keys().
+    let (cert, _rev) = builder.generate()?;
     Ok(cert)
 }
 

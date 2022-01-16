@@ -9,6 +9,7 @@ use sequoia_openpgp::serialize::SerializeInto;
 use sequoia_openpgp::parse::Parse;
 
 pub use sequoia_openpgp::cert::prelude::CipherSuite;
+pub use sequoia_openpgp::types::KeyFlags;
 pub use sequoia_openpgp::Cert;
 
 use super::error::SharkSignError as SSE;
@@ -151,7 +152,7 @@ pub enum KeyKind {
 /// Flags that can be set when generating a key or subkey
 #[derive(Serialize, Deserialize, Hash, Clone)]
 #[serde(rename_all = "camelCase")]
-pub enum KeyFlags {
+pub enum KeyFlag {
     /// Private key can be used to sign other keys
     Certification,
     /// Private key can be used to sign data
@@ -166,6 +167,22 @@ pub enum KeyFlags {
     Split,
     /// Private key may be owned in full by more than one individual
     Group,
+}
+
+fn convert_flags(named: &[KeyFlag]) -> KeyFlags {
+    let mut flags = KeyFlags::empty();
+    for flag in named {
+        match flag {
+            KeyFlag::Certification => flags = flags.set_certification(),
+            KeyFlag::Signing => flags = flags.set_signing(),
+            KeyFlag::TransportEncryption => flags = flags.set_transport_encryption(),
+            KeyFlag::StorageEncryption => flags = flags.set_storage_encryption(),
+            KeyFlag::Authentication => flags = flags.set_authentication(),
+            KeyFlag::Split => flags = flags.set_split_key(),
+            KeyFlag::Group => flags = flags.set_group_key(),
+        }
+    }
+    flags
 }
 
 /// How long before the key expires, if it expires at all.
@@ -183,6 +200,20 @@ pub enum Validity {
     For(Duration),
     /// The key expires at a particular point in time
     Until(SystemTime),
+}
+
+impl TryFrom<&Validity> for Option<Duration> {
+    type Error = SSE;
+    fn try_from(result: &Validity) -> Result<Option<Duration>, SSE> {
+        match result {
+            Validity::DoesNotExpire => Ok(None),
+            Validity::For(d) => Ok(Some(*d)),
+            Validity::Until(t) => match t.duration_since(SystemTime::now()) {
+                Ok(d) => Ok(Some(d)),
+                Err(e) => Err(SSE::Config(format!("could not compute duration from provided system time: {:?}", e))),
+            },
+        }
+    }
 }
 
 /// shim to derive for remote CipherSuite type
@@ -219,7 +250,7 @@ impl From<CipherSuite> for CipherSuiteDef {
 pub struct SubkeyConfig {
     #[serde(with = "CipherSuiteDef")]
     pub cipher_suite: CipherSuite,
-    pub flags: Vec<KeyFlags>,
+    pub flags: Vec<KeyFlag>,
     pub validity: Validity,
 }
 
@@ -231,6 +262,12 @@ impl Hash for SubkeyConfig {
     }
 }
 
+impl SubkeyConfig {
+    pub fn key_flags(&self) -> KeyFlags {
+        convert_flags(&self.flags)
+    }
+}
+
 /// Configuration for generating a primary key and subkeys
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -238,7 +275,7 @@ pub struct KeyConfig {
     #[serde(with = "CipherSuiteDef")]
     pub cipher_suite: CipherSuite,
     pub subkeys: Vec<SubkeyConfig>,
-    pub flags: Vec<KeyFlags>,
+    pub flags: Vec<KeyFlag>,
     pub validity: Validity,
     pub userid: String,
 }
@@ -250,6 +287,12 @@ impl Hash for KeyConfig {
         self.flags.hash(state);
         self.validity.hash(state);
         self.userid.hash(state);
+    }
+}
+
+impl KeyConfig {
+    pub fn key_flags(&self) -> KeyFlags {
+        convert_flags(&self.flags)
     }
 }
 
