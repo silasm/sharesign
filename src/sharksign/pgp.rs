@@ -7,7 +7,7 @@ use openpgp::policy::StandardPolicy;
 use openpgp::armor;
 pub use openpgp::Cert;
 
-use super::data::{Encrypted, KeyRef, KeyConfig};
+use super::data::{Encrypted, KeyConfig};
 use super::error::SharkSignError as SSE;
 
 pub fn generate(config: &KeyConfig) -> openpgp::Result<Cert> {
@@ -62,10 +62,7 @@ pub fn encrypt(cert: &Cert, payload: &[u8]) -> Result<Encrypted, SSE> {
     /* encrypt the message into the buffer */
     message.write_all(payload)?;
     message.finalize()?;
-    Ok(Encrypted {
-        data: String::from_utf8(ciphertext).unwrap(),
-        pubkey: KeyRef {},
-    })
+    Ok(Encrypted(String::from_utf8(ciphertext).unwrap()))
 }
 
 pub mod verify {
@@ -166,7 +163,7 @@ pub mod decrypt {
             secret: &tsk,
         };
     
-        let mut decryptor = DecryptorBuilder::from_bytes(&encrypted.data)?
+        let mut decryptor = DecryptorBuilder::from_bytes(&encrypted.0)?
             .with_policy(&policy, None, helper)?;
     
         let mut cleartext: Vec<u8> = Vec::new();

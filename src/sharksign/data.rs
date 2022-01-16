@@ -407,32 +407,11 @@ pub struct Signature {
     pub signature: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Hash, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PubKey {
-    pub kind: KeyKind,
-    pub pem: String,
-}
+#[derive(Deserialize, Clone)]
+pub struct KeyRef {}
 
-impl From<&Cert> for PubKey {
-    fn from(result: &Cert) -> PubKey {
-        let ArmoredCert(pem) = ArmoredCert::try_from(result).unwrap();
-        PubKey {
-            kind: KeyKind::Rsa,
-            pem,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Hash)]
-#[serde(rename_all = "camelCase")]
-pub struct KeyRef {
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HashDigest {
-}
+#[derive(Deserialize, Clone)]
+pub struct HashDigest {}
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -455,10 +434,7 @@ impl Hash for KeyGenRequest {
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
-pub struct Encrypted {
-    pub data: String,
-    pub pubkey: KeyRef,
-}
+pub struct Encrypted(pub String);
 
 #[cfg(test)]
 mod tests {
@@ -469,7 +445,7 @@ mod tests {
         let td = test_data::load_test_data_3_5();
 
         let encrypted_share = td.generated.shares[0].clone();
-        println!("encrypted: {}", encrypted_share.encrypted.data);
+        println!("encrypted: {}", encrypted_share.encrypted.0);
 
         let decrypted = encrypted_share.decrypt(&td.approvers_priv()[0]).unwrap();
         println!("decrypted: {}", String::from_utf8_lossy(&decrypted.data));
