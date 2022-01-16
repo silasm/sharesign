@@ -203,7 +203,7 @@ impl<'de> Deserialize<'de> for GeneratedKey {
                 formatter.write_str("struct GeneratedKey")
             }
     
-                fn visit_seq<V>(self, mut seq: V) -> Result<GeneratedKey, V::Error>
+            fn visit_seq<V>(self, mut seq: V) -> Result<GeneratedKey, V::Error>
             where
                 V: SeqAccess<'de>,
             {
@@ -222,7 +222,7 @@ impl<'de> Deserialize<'de> for GeneratedKey {
                 Ok(GeneratedKey { pubkey, config, shares })
             }
     
-                fn visit_map<V>(self, mut map: V) -> Result<GeneratedKey, V::Error>
+            fn visit_map<V>(self, mut map: V) -> Result<GeneratedKey, V::Error>
             where
                 V: MapAccess<'de>,
             {
@@ -280,13 +280,116 @@ impl Hash for GeneratedKey {
     }
 }
 
-#[derive(Deserialize, Hash, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct SignRequestSubmit {
     pub payload: Vec<u8>,
     pub key_config: KeyConfig,
     pub expires: Option<u64>,
-    pub pubkey: Option<PubKey>,
+    pub pubkey: Option<Cert>,
+}
+
+impl Hash for SignRequestSubmit {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.payload.hash(state);
+        self.key_config.hash(state);
+        self.expires.hash(state);
+        match &self.pubkey {
+            Some(key) => ArmoredCert::try_from(key).unwrap().hash(state),
+            None => (),
+        };
+    }
+}
+
+impl<'de> Deserialize<'de> for SignRequestSubmit {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "camelCase")]
+        enum Field { Payload, KeyConfig, Expires, Pubkey }
+    
+        struct SignRequestSubmitVisitor;
+        impl<'de> Visitor<'de> for SignRequestSubmitVisitor {
+            type Value = SignRequestSubmit;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct SignRequestSubmit")
+            }
+    
+            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let payload = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let key_config = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let expires = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                let s: String = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                let pubkey = match Cert::try_from(ArmoredCert(s.clone())) {
+                    Ok(cert) => Some(cert),
+                    Err(_) => return Err(
+                        de::Error::invalid_value(Unexpected::Str(&s), &self)
+                    ),
+                };
+                Ok(SignRequestSubmit { payload, key_config, expires, pubkey })
+            }
+    
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut payload = None;
+                let mut key_config = None;
+                let mut expires = None;
+                let mut pubkey = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Payload => {
+                            if payload.is_some() {
+                                return Err(de::Error::duplicate_field("payload"))
+                            }
+                            payload = Some(map.next_value()?);
+                        }
+                        Field::KeyConfig => {
+                            if payload.is_some() {
+                                return Err(de::Error::duplicate_field("keyConfig"))
+                            }
+                            key_config = Some(map.next_value()?);
+                        }
+                        Field::Expires => {
+                            if payload.is_some() {
+                                return Err(de::Error::duplicate_field("expires"))
+                            }
+                            expires = Some(map.next_value()?);
+                        }
+                        Field::Pubkey => {
+                            if pubkey.is_some() {
+                                return Err(de::Error::duplicate_field("pubkey"));
+                            }
+                            let s: String = map.next_value()?;
+                            match Cert::try_from(ArmoredCert(s.clone())) {
+                                Ok(cert) => pubkey = Some(cert),
+                                Err(_) => return Err(
+                                    de::Error::invalid_value(Unexpected::Str(&s), &self)
+                                ),
+                            };
+                        },
+                    }
+                }
+                let payload = payload.ok_or_else(
+                    || de::Error::missing_field("payload"))?;
+                let key_config = key_config.ok_or_else(
+                    || de::Error::missing_field("keyConfig"))?;
+                Ok(SignRequestSubmit { payload, key_config, expires, pubkey })
+            }
+        }
+    
+        const FIELDS: &[&str] = &["payload", "keyConfig", "expires", "pubkey"];
+        deserializer.deserialize_struct("GeneratedKey", FIELDS, SignRequestSubmitVisitor)
+    }
 }
 
 #[derive(Deserialize)]

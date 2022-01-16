@@ -5,12 +5,14 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
+use std::convert::TryFrom;
 use std::collections::HashMap;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
+use serde::ser::SerializeStruct;
 
-use super::data::{KeyConfig, PubKey, Share, GeneratedKey, Signature, SignRequestSubmit};
+use super::data::{KeyConfig, Share, GeneratedKey, Signature, SignRequestSubmit, ArmoredCert};
 use super::error::SharkSignError as SSE;
-use sequoia_openpgp::parse::Parse;
+use sequoia_openpgp::Cert;
 
 // TODO
 pub fn now() -> u64 {
@@ -22,23 +24,39 @@ pub fn default_expire() -> u64 {
     0
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct SignRequest {
     payload: Vec<u8>,
     pub key_config: KeyConfig,
-    #[serde(default)]
-    pub pubkey: Option<PubKey>,
-    #[serde(skip)]
+    pub pubkey: Option<Cert>,
     shares_submitted: Vec<Share>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
     signature: Option<Signature>,
-    #[serde(skip_deserializing)]
-    #[serde(default = "now")]
     ctime: u64, // should be a datetime object
-    #[serde(default = "default_expire")]
     expires: u64, // should be a datetime object
+}
+
+impl Serialize for SignRequest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("SignRequest", 7)?;
+        state.serialize_field("payload", &self.payload)?;
+        state.serialize_field("keyConfig", &self.key_config)?;
+        if let Some(pubkey) = &self.pubkey {
+            match ArmoredCert::try_from(pubkey) {
+                Ok(cert) => state.serialize_field("pubkey", &cert)?,
+                Err(e) => return Err(serde::ser::Error::custom(format!("{:?}", e))),
+            };
+        }
+        // do not serialize unencrypted shares
+        if let Some(signature) = &self.signature {
+            state.serialize_field("signature", &signature)?;
+        }
+        state.serialize_field("ctime", &self.ctime)?;
+        state.serialize_field("expires", &self.expires)?;
+        state.end()
+    }
 }
 
 impl From<SignRequestSubmit> for SignRequest {
@@ -65,8 +83,7 @@ impl SignRequest {
     pub fn submit_share(&mut self, share: Share) -> Result<(), SSE> {
         let _validation = match &self.pubkey {
             Some(pubkey) => {
-                let cert = super::pgp::Cert::from_reader(pubkey.pem.as_bytes())?;
-                share.data(&cert)?;
+                share.data(pubkey)?;
             },
             None => (),
         };
@@ -112,7 +129,7 @@ mod tests {
             payload: Vec::from("Sign me!".as_bytes()),
             key_config: td.generated.config,
             expires: None,
-            pubkey: Some(PubKey::from(&td.generated.pubkey)),
+            pubkey: Some(td.generated.pubkey),
         };
         let mut req = SignRequest::from(submit);
         req.submit_share(share).unwrap();
