@@ -274,18 +274,17 @@ mod tests {
         match maybe_revoked.revocation_status(p, None) {
             RevocationStatus::CouldBe(revs) => {
                 let mut found_matching_fingerprint = false;
-                for revocation in revs {
-                    for revocation_fp in revocation.issuer_fingerprints() {
-                        if revoker_fp == *revocation_fp {
-                            found_matching_fingerprint = true;
-                            let ver = revocation.clone().verify_primary_key_revocation(
-                                revoker_key,
-                                revoked_key,
-                            );
-                            if ver.is_ok() {
-                                return Ok(())
-                            }
-                        }
+                for revocation in revs.iter()
+                    .filter(|rev| rev.issuer_fingerprints()
+                        .any(|x| *x == revoker_fp))
+                {
+                    found_matching_fingerprint = true;
+                    let ver = (*revocation).clone().verify_primary_key_revocation(
+                        revoker_key,
+                        revoked_key,
+                    );
+                    if ver.is_ok() {
+                        return Ok(())
                     }
                 }
                 if found_matching_fingerprint {
