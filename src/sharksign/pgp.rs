@@ -246,6 +246,59 @@ mod tests {
     use super::decrypt;
     use openpgp::serialize::SerializeInto;
     use openpgp::parse::Parse;
+    use openpgp::types::{ReasonForRevocation, RevocationStatus, SignatureType};
+
+    /// checks that the revoker cert:
+    /// 1. has its fingerprint listed in the revoked cert's revocation keys
+    /// 2. has its fingerprint listed in one of the attached revocation certs
+    /// 3. was in fact the one to sign the revocation
+    fn confirm_revocation(maybe_revoked: &Cert, revoker: &Cert) -> Result<(), SSE> {
+        let p = &StandardPolicy::new();
+        let revoker_fp = revoker.fingerprint();
+
+        let mut can_revoke = false;
+        for revkey in maybe_revoked.revocation_keys(p) {
+            let (_algo, fingerprint) = revkey.revoker();
+            if *fingerprint == revoker_fp {
+                can_revoke = true;
+            }
+        }
+        if ! can_revoke {
+            return Err(SSE::Unexpected("revoker's fingerprint not found in the revocation keys of the possibly-revoked cert".to_string()));
+        }
+
+        let revoker_key = revoker.with_policy(p, None)?
+            .primary_key().key().parts_as_public();
+        let revoked_key = maybe_revoked.with_policy(p, None)?
+            .primary_key().key().parts_as_public();
+        match maybe_revoked.revocation_status(p, None) {
+            RevocationStatus::CouldBe(revs) => {
+                let mut found_matching_fingerprint = false;
+                for revocation in revs {
+                    for revocation_fp in revocation.issuer_fingerprints() {
+                        if revoker_fp == *revocation_fp {
+                            found_matching_fingerprint = true;
+                            let ver = revocation.clone().verify_primary_key_revocation(
+                                revoker_key,
+                                revoked_key,
+                            );
+                            if ver.is_ok() {
+                                return Ok(())
+                            }
+                        }
+                    }
+                }
+                if found_matching_fingerprint {
+                    Err(SSE::Unexpected("Found revocation matching revoking key's fingerprint, but the signature was not valid".to_string()))
+                }
+                else {
+                    Err(SSE::Unexpected("No revocation with matching fingerprint found".to_string()))
+                }
+            },
+            RevocationStatus::Revoked(_) => Err(SSE::Unexpected("cert is already confirmed revoked".to_string())),
+            RevocationStatus::NotAsFarAsWeKnow => Err(SSE::Unexpected("cert is not revoked".to_string())),
+        }
+    }
 
     #[test]
     fn generate_cert_export_import() {
@@ -254,6 +307,55 @@ mod tests {
         let cert = generate(&td.generated.config).unwrap();
         let armor = cert.armored().to_vec().unwrap();
         openpgp::cert::Cert::from_reader(armor.as_slice()).unwrap();
+    }
+
+    #[test]
+    fn test_revoke_with_outside_key() {
+        let td = test_data::load_test_data_3_5();
+        let p = &StandardPolicy::new();
+
+        let mut config = td.generated.config.clone();
+        let revoc_pub = &td.approvers_pub[0];
+        config.revocation_keys.push(revoc_pub.clone());
+        let compromised = generate(&config).unwrap();
+
+        let revkeys = compromised.revocation_keys(p).collect::<Vec<&RevocationKey>>();
+        println!("keys designated for revocation: {:#?}", revkeys);
+        assert_eq!(revkeys, vec![&revoc_pub.into()]);
+
+        let revoc_priv = &td.approvers_priv()[0];
+        let mut revoker = revoc_priv.primary_key()
+            .key().clone().parts_into_secret().unwrap()
+            .into_keypair().unwrap();
+        let rev = compromised.revoke(
+            &mut revoker,
+            ReasonForRevocation::KeyCompromised,
+            b"rowhammer really sucks"
+        ).unwrap();
+        let compromised = compromised.insert_packets(rev).unwrap();
+        // returns CouldBe for outside revocations, yielding verification
+        // of both the signature and authorization (presence in
+        // revocation_keys) to the caller.
+        //
+        // TODO: this is messy enough that it should probably be its own
+        // function even if that function is only used in tests.
+        if let RevocationStatus::CouldBe(revs) = compromised.revocation_status(p, None) {
+            assert_eq!(revs.len(), 1);
+            let rev = revs[0].clone();
+
+            // revocation fields are what we set them to
+            assert_eq!(rev.typ(), SignatureType::KeyRevocation);
+            assert_eq!(rev.reason_for_revocation(),
+                       Some((ReasonForRevocation::KeyCompromised,
+                             "rowhammer really sucks".as_bytes())));
+
+            // key is authorized to revoke, and signature checks out
+            confirm_revocation(&compromised, revoc_pub).unwrap();
+        }
+        else {
+            panic!("Unexpected revocation status: {:#?}",
+                   compromised.revocation_status(p, None));
+        }
     }
 
     #[test]
