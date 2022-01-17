@@ -21,6 +21,12 @@ pub enum SharkSignError {
         #[from]
         source: std::io::Error,
     },
+    #[error("Revoking key not listed in cert's revocation_keys")]
+    NotRevoker,
+    #[error("No revocation containing revoking key's fingerprint")]
+    NoRevocation,
+    #[error("All revocations by revoker failed signature validation")]
+    BadSignatureInRevocation,
     #[error("Unexpected error: {0:?}")]
     Unexpected(String),
 }

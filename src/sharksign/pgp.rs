@@ -256,46 +256,44 @@ mod tests {
         let p = &StandardPolicy::new();
         let revoker_fp = revoker.fingerprint();
 
-        let mut can_revoke = false;
-        for revkey in maybe_revoked.revocation_keys(p) {
-            let (_algo, fingerprint) = revkey.revoker();
-            if *fingerprint == revoker_fp {
-                can_revoke = true;
-            }
-        }
-        if ! can_revoke {
-            return Err(SSE::Unexpected("revoker's fingerprint not found in the revocation keys of the possibly-revoked cert".to_string()));
+        // check if revoker is listed in maybe_revoked's revocation_keys
+        if ! maybe_revoked.revocation_keys(p)
+            .map(|x| x.revoker())
+            .any(|(_, fingerprint)| *fingerprint == revoker_fp)
+        {
+            return Err(SSE::NotRevoker);
         }
 
-        let revoker_key = revoker.with_policy(p, None)?
+        // get the primary public keys from both certs
+        let revoker = revoker.with_policy(p, None)?
             .primary_key().key().parts_as_public();
-        let revoked_key = maybe_revoked.with_policy(p, None)?
+        let revoked = maybe_revoked.with_policy(p, None)?
             .primary_key().key().parts_as_public();
-        match maybe_revoked.revocation_status(p, None) {
-            RevocationStatus::CouldBe(revs) => {
-                let mut found_matching_fingerprint = false;
-                for revocation in revs.iter()
-                    .filter(|rev| rev.issuer_fingerprints()
-                        .any(|x| *x == revoker_fp))
-                {
-                    found_matching_fingerprint = true;
-                    let ver = (*revocation).clone().verify_primary_key_revocation(
-                        revoker_key,
-                        revoked_key,
-                    );
-                    if ver.is_ok() {
-                        return Ok(())
-                    }
-                }
-                if found_matching_fingerprint {
-                    Err(SSE::Unexpected("Found revocation matching revoking key's fingerprint, but the signature was not valid".to_string()))
-                }
-                else {
-                    Err(SSE::Unexpected("No revocation with matching fingerprint found".to_string()))
-                }
-            },
-            RevocationStatus::Revoked(_) => Err(SSE::Unexpected("cert is already confirmed revoked".to_string())),
-            RevocationStatus::NotAsFarAsWeKnow => Err(SSE::Unexpected("cert is not revoked".to_string())),
+
+        let rev_status = maybe_revoked.revocation_status(p, None);
+        if let RevocationStatus::CouldBe(revs) = rev_status {
+            // get all revocations possibly signed by revoker
+            let mut iter = revs.iter().filter(|rev| {
+                    rev.issuer_fingerprints().any(
+                         |fp| *fp == revoker_fp
+                    )}).peekable();
+
+            // check the signature if there are any
+            if iter.peek().is_none() {
+                // no revocations found
+                Err(SSE::NoRevocation)
+            } else if ! iter.any(|rev| {
+                let mut rev = (*rev).clone();
+                rev.verify_primary_key_revocation(revoker, revoked).is_ok()
+            }) {
+                // some revocations found, but all failed verification
+                Err(SSE::BadSignatureInRevocation)
+            } else {
+                // we found at least one verified revocation by revoker
+                Ok(())
+            }
+        } else {
+            Err(SSE::Unexpected("cert revocation is not in question".to_string()))
         }
     }
 
@@ -349,7 +347,7 @@ mod tests {
                              "rowhammer really sucks".as_bytes())));
 
             // key is authorized to revoke, and signature checks out
-            confirm_revocation(&compromised, revoc_pub).unwrap();
+            confirm_revocation(&compromised, &td.approvers_pub[0]).unwrap();
         }
         else {
             panic!("Unexpected revocation status: {:#?}",
