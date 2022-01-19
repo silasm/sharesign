@@ -3,7 +3,7 @@ use sharks::Sharks;
 pub mod data;
 pub mod state;
 pub mod error;
-pub mod pgp;
+mod pgp;
 
 use sequoia_openpgp::serialize::SerializeInto;
 use sequoia_openpgp::parse::Parse;
@@ -57,7 +57,7 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], verify: &
 }
 
 #[cfg(test)]
-pub mod test_data;
+mod test_data;
 
 #[cfg(test)]
 mod tests {
