@@ -135,7 +135,6 @@ impl EncryptedShare {
         })
     }
 
-    #[cfg(test)]
     pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SSE> {
         Ok(Share {
             data: pgp::decrypt::decrypt(decrypt, &self.encrypted)?,

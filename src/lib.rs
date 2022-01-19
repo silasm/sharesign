@@ -56,6 +56,7 @@ pub fn sign(shares_needed: u8, shares: &[data::Share], payload: &[u8], verify: &
     })
 }
 
+#[cfg(test)]
 pub mod test_data;
 
 #[cfg(test)]

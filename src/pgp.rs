@@ -160,7 +160,6 @@ pub mod verify {
 // API has no decryption functions, and encrypts only when distributing shares
 // code ripped with minor changes from
 // https://docs.sequoia-pgp.org/sequoia_guide/chapter_02/index.html
-#[cfg(test)]
 pub mod decrypt {
     use std::io;
     use super::*;
@@ -242,11 +241,11 @@ pub mod decrypt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::test_data;
     use super::decrypt;
     use openpgp::serialize::SerializeInto;
     use openpgp::parse::Parse;
     use openpgp::types::{ReasonForRevocation, RevocationStatus, SignatureType};
+    use super::super::test_data;
 
     /// checks that the revoker cert:
     /// 1. has its fingerprint listed in the revoked cert's revocation keys

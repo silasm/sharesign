@@ -2,12 +2,10 @@
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use serde_json::json;
 
-#[path = "../sharksign/mod.rs"]
-mod sharksign;
-use sharksign::data;
-use sharksign::state;
-use sharksign::state::{State, ID};
-use sharksign::error::SharkSignError as SSE;
+use sharesign::data;
+use sharesign::state;
+use sharesign::state::{State, ID};
+use sharesign::error::SharkSignError as SSE;
 
 async fn startsign(state: web::Data<State>, submission: web::Json<data::SignRequestSubmit>) -> impl Responder {
     let id = state::get_id(&*submission);
@@ -63,7 +61,7 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
     else if share_count < key_gen_request.shares_required.into() {
         return Err(SSE::Config("Refusing to generate fewer shares than required to regenerate key".to_owned()))
     }
-    let generated = sharksign::generate(
+    let generated = sharesign::generate(
         &key_gen_request.approvers,
         key_gen_request.shares_required,
         &key_gen_request.key_config,
@@ -118,10 +116,12 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[cfg(test)]
+mod test_data;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use actix_web::{test, http};
-    use super::sharksign::test_data;
     use sequoia_openpgp::serialize::SerializeInto;
 
     #[actix_rt::test]
