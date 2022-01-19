@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 extern crate sequoia_openpgp as openpgp;
 use serde::{Serialize, Deserialize};
 
@@ -48,11 +49,6 @@ impl TestData {
     pub fn approvers_priv(&self) -> Vec<Cert> {
         use openpgp::parse::Parse;
         self.approvers_priv.iter().map(|x| Cert::from_reader(x.as_bytes()).unwrap()).collect()
-    }
-
-    #[cfg(test)]
-    pub fn verifier(&self) -> Cert {
-        self.generated.pubkey.clone()
     }
 }
 

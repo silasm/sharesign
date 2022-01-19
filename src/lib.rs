@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn recover_static_pem_3_5() {
         let td = test_data::load_test_data_3_5();
-        recover(3, &td.decrypted_shares(), &td.verifier()).unwrap();
+        recover(3, &td.decrypted_shares(), &td.generated.pubkey).unwrap();
     }
 
     #[test]
@@ -91,9 +91,9 @@ mod tests {
         let td = test_data::load_test_data_3_5();
         let shares = td.decrypted_shares();
         let payload = "Hello, World!".to_owned().into_bytes();
-        let signature = sign(td.shares_required, &shares, &payload, &td.verifier()).unwrap();
+        let signature = sign(td.shares_required, &shares, &payload, &td.generated.pubkey).unwrap();
 
-        let cert = recover(3, &shares, &td.verifier()).unwrap();
+        let cert = recover(3, &shares, &td.generated.pubkey).unwrap();
         let cert = sequoia_openpgp::Cert::from_reader(cert.as_slice()).unwrap();
 
         pgp::verify::verify(&cert.strip_secret_key_material(), &payload, &signature.signature).unwrap();
