@@ -89,7 +89,7 @@ async fn showkey(_path: web::Path<data::KeyRef>) -> impl Responder {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    let state = web::Data::new(State::new());
+    let state = web::Data::new(State::default());
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
@@ -152,7 +152,7 @@ mod tests {
         });
         let _deserialized: data::KeyGenRequest =
             serde_json::from_value(keygen.clone()).unwrap();
-        let state = web::Data::new(State::new());
+        let state = web::Data::new(State::default());
 
         let mut app = test::init_service(
             App::new()
