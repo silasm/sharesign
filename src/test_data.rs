@@ -1,9 +1,13 @@
 extern crate sequoia_openpgp as openpgp;
 use serde::{Serialize, Deserialize};
+
+// NOTE: when including this file with "mod test_data;" (e.g.  in
+// binary crates), ensure that sharesign/data.rs is in scope in the
+// parent scope, or this will fail to resolve and break compilation.
 use super::data;
+use data::Cert;
 
 use openpgp::serialize::SerializeInto;
-use super::pgp::Cert;
 
 #[derive(Serialize, Deserialize)]
 pub struct TestData {

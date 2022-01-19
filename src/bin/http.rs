@@ -116,6 +116,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[cfg(test)]
+#[path = "../test_data.rs"]
 mod test_data;
 
 #[cfg(test)]

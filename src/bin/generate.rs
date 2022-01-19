@@ -5,6 +5,7 @@ use std::path::Path;
 
 use sharesign::data::{self, KeyFlag, Validity, CipherSuite, Cert};
 
+#[path = "../test_data.rs"]
 mod test_data;
 use test_data::TestData;
 
