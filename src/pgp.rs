@@ -175,7 +175,7 @@ pub mod decrypt {
     
         let helper = Helper {
             policy: &policy,
-            secret: &tsk,
+            secret: tsk,
         };
     
         let mut decryptor = DecryptorBuilder::from_bytes(&encrypted.0)?
