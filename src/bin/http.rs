@@ -2,6 +2,7 @@
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use serde_json::json;
 
+#[path = "../sharksign/mod.rs"]
 mod sharksign;
 use sharksign::data;
 use sharksign::state;
