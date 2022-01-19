@@ -53,7 +53,7 @@ async fn showshares(_path: web::Path<(data::KeyRef, data::HashDigest)>) -> impl 
     HttpResponse::Ok().json(())
 }
 
-async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<HttpResponse, SSE> {
+async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<web::Json<data::GeneratedKey>, SSE> {
     let share_count = key_gen_request.approvers.len();
     if share_count > 255 {
         return Err(SSE::Config("Cannot generate >255 shares".to_owned()))
@@ -69,9 +69,9 @@ async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGen
     let id = state::get_id(&*key_gen_request);
     {
         let mut key_gen_requests = state.key_gen_requests.lock().unwrap();
-        key_gen_requests.insert(id, generated);
+        key_gen_requests.insert(id, generated.clone());
     }
-    Ok(HttpResponse::Ok().json(json!({"id": id})))
+    Ok(web::Json(generated))
 }
 
 async fn showkeys() -> impl Responder {
@@ -136,7 +136,7 @@ mod tests {
                     {
                         "cipherSuite": "RSA2k",
                         "flags": ["signing"],
-                        "validity": "doesNotExpire"
+                        "validity": "doesNotExpire",
                     }
                 ],
                 "flags": ["certification"],
@@ -147,6 +147,8 @@ mod tests {
             "approvers": approvers,
             "sharesRequired": 3,
         });
+        let _deserialized: data::KeyGenRequest =
+            serde_json::from_value(keygen.clone()).unwrap();
         let state = web::Data::new(State::new());
 
         let mut app = test::init_service(
@@ -160,5 +162,7 @@ mod tests {
             .to_request();
         let resp = test::call_service(&mut app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
+        let generated: data::GeneratedKey = test::read_body_json(resp).await;
+        assert_eq!(generated.shares.len(), 5);
     }
 }
