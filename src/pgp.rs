@@ -223,6 +223,7 @@ pub mod decrypt {
             where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
         {
             // use the one non-encrypted key in our test certs
+            #[allow(clippy::iter_nth_zero)]
             let key = self.secret.keys().unencrypted_secret()
                 .with_policy(self.policy, None)
                 .for_transport_encryption().nth(0).unwrap().key().clone();
