@@ -1,6 +1,4 @@
 use anyhow;
-use actix_web::{HttpResponse, dev::HttpResponseBuilder, ResponseError};
-use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -31,20 +29,25 @@ pub enum SharkSignError {
     Unexpected(String),
 }
 
-use SharkSignError as SSE;
-use actix_web::http::StatusCode as HSC;
-
-impl ResponseError for SharkSignError {
-    fn status_code(&self) -> HSC {
-        match self {
-            SSE::SignRequestNotFound(_) => HSC::NOT_FOUND,
-            SSE::Config(_)              => HSC::BAD_REQUEST,
-            _                           => HSC::INTERNAL_SERVER_ERROR,
+#[cfg(feature = "http")]
+mod impl_responserror {
+    use actix_web::{HttpResponse, dev::HttpResponseBuilder, ResponseError};
+    use serde_json::json;
+    use super::SharkSignError as SSE;
+    use actix_web::http::StatusCode as HSC;
+    
+    impl ResponseError for SSE {
+        fn status_code(&self) -> HSC {
+            match self {
+                SSE::SignRequestNotFound(_) => HSC::NOT_FOUND,
+                SSE::Config(_)              => HSC::BAD_REQUEST,
+                _                           => HSC::INTERNAL_SERVER_ERROR,
+            }
         }
-    }
-
-    fn error_response(&self) -> HttpResponse {
-        HttpResponseBuilder::new(self.status_code())
-            .json(json!({"error": format!("{}", self)}))
+    
+        fn error_response(&self) -> HttpResponse {
+            HttpResponseBuilder::new(self.status_code())
+                .json(json!({"error": format!("{}", self)}))
+        }
     }
 }

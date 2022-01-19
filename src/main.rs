@@ -1,3 +1,4 @@
+#![cfg(feature = "http")]
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use serde_json::json;
 
