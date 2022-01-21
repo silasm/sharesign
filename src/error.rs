@@ -1,10 +1,15 @@
 use anyhow;
 use thiserror::Error;
+use super::data;
 
 #[derive(Debug, Error)]
 pub enum SharkSignError {
     #[error("No SignRequest with ID: {0:?}")]
     SignRequestNotFound(super::state::ID),
+    #[error("No managed key found with fingerprint: {0:?}")]
+    ManagedKeyNotFound(data::KeyID),
+    #[error("KeyID not found in the shares yet to be distributed: {0:?}")]
+    ApproverNotFound(data::KeyID),
     #[error("Key recovery error: {0:?}")]
     KeyRecovery(String),
     #[error("Invalid configuration: {0:?}")]
@@ -40,6 +45,8 @@ mod impl_responserror {
         fn status_code(&self) -> HSC {
             match self {
                 SSE::SignRequestNotFound(_) => HSC::NOT_FOUND,
+                SSE::ManagedKeyNotFound(_)  => HSC::NOT_FOUND,
+                SSE::ApproverNotFound(_)    => HSC::NOT_FOUND,
                 SSE::Config(_)              => HSC::BAD_REQUEST,
                 _                           => HSC::INTERNAL_SERVER_ERROR,
             }

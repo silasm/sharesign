@@ -1,6 +1,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::convert::{TryInto, TryFrom};
+use std::ops::Deref;
 use std::time::{Duration, SystemTime};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Visitor, SeqAccess, MapAccess, Unexpected};
@@ -11,6 +12,7 @@ use sequoia_openpgp::parse::Parse;
 pub use sequoia_openpgp::cert::prelude::CipherSuite;
 pub use sequoia_openpgp::types::KeyFlags;
 pub use sequoia_openpgp::Cert;
+use sequoia_openpgp::{Packet, Message};
 
 use super::error::SharkSignError as SSE;
 use super::pgp;
@@ -76,7 +78,7 @@ pub mod serde_vec_cert {
         type Value = Vec<Cert>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            write!(formatter, "an ascii-armored PGP cert")
+            write!(formatter, "a sequence of ascii-armored PGP certs")
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -126,6 +128,13 @@ pub struct EncryptedShare {
     encrypted: Encrypted,
 }
 
+impl Deref for EncryptedShare {
+    type Target = Encrypted;
+    fn deref(&self) -> &Self::Target {
+        &self.encrypted
+    }
+}
+
 impl EncryptedShare {
     pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SSE> {
         let signed = pgp::sign(sign, &Vec::from(&data), true)?;
@@ -137,10 +146,14 @@ impl EncryptedShare {
 
     pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SSE> {
         Ok(Share {
-            data: pgp::decrypt::decrypt(decrypt, &self.encrypted)?,
+            data: self.encrypted.decrypt(decrypt)?,
         })
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Fingerprint(Vec<u8>);
+
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum KeyKind {
@@ -567,13 +580,81 @@ impl Hash for KeyGenRequest {
     }
 }
 
+// newtype for custom trait impls
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyID(pub sequoia_openpgp::KeyID);
+impl Deref for KeyID {
+    type Target = sequoia_openpgp::KeyID;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for KeyID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>
+    {
+        struct KeyIDVisitor;
+        impl<'de> Visitor<'de> for KeyIDVisitor {
+            type Value = KeyID;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an openPGP key ID as a hex string")
+            }
+    
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where
+                E: serde::de::Error
+            {
+                match sequoia_openpgp::KeyID::from_hex(v) {
+                    Ok(id) => Ok(KeyID(id)),
+                    Err(_) => Err(de::Error::invalid_value(Unexpected::Str(v), &self)),
+                }
+            }
+        }
+    
+        deserializer.deserialize_str(KeyIDVisitor)
+    }
+
+}
+
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Encrypted(pub String);
 
+impl Encrypted {
+    pub fn decrypt(self, decrypt: &Cert) -> Result<Vec<u8>, SSE> {
+        pgp::decrypt::decrypt(decrypt, &self)
+    }
+
+    pub fn recipients(&self) -> Result<Vec<KeyID>, SSE> {
+        // coercing into a message this way is unsafe for untrusted data.
+        // as of writing this we're only running this on messages we've
+        // generated ourselves.
+        let msg = Message::from_reader(self.0.as_bytes())?;
+        // for each top-level PKESK packet, return the KeyID of the
+        // recipient, and collate into a Vec.
+        Ok(msg.descendants().flat_map(|x| match x {
+            Packet::PKESK(pkesk) => Some(KeyID(pkesk.recipient().clone())),
+            _ => None,
+        }).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_data;
+    use super::*;
+    use sequoia_openpgp::{Packet, KeyID};
+    use sequoia_openpgp::policy::StandardPolicy;
 
     #[test]
     fn test_decrypt_and_verify_share() {
@@ -588,5 +669,26 @@ mod tests {
         let verifier = td.generated.pubkey;
         let verified = decrypted.data(&verifier).unwrap();
         println!("verified: {}", String::from_utf8_lossy(&Vec::from(&verified)));
+    }
+
+    #[test]
+    fn test_packet_parser() {
+        let cert = test_data::load_test_data_3_5().approvers_pub[0].clone();
+        let policy = StandardPolicy::new();
+
+        let msg = pgp::encrypt(&cert, "encrypt me!".as_bytes()).unwrap();
+        let msg = Message::from_reader(msg.0.as_bytes()).unwrap();
+        let msg_recipients: Vec<&KeyID> = msg.descendants().flat_map(|x| match x {
+            Packet::PKESK(pkesk) => Some(pkesk.recipient()),
+            _ => None,
+        }).collect();
+
+        let cert_recipients = cert.keys()
+            .with_policy(&policy, None)
+            .supported().alive().revoked(false)
+            .for_transport_encryption();
+        assert!(cert_recipients
+            .map(|x| x.keyid())
+            .all(|x| msg_recipients.iter().any(|y| **y == x)))
     }
 }

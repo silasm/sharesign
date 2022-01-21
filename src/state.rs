@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Serializer};
 use serde::ser::SerializeStruct;
 
-use super::data::{KeyConfig, Share, GeneratedKey, Signature, SignRequestSubmit, ArmoredCert};
+use super::data::{KeyConfig, Share, GeneratedKey, Signature, SignRequestSubmit, ArmoredCert, KeyID};
 use super::error::SharkSignError as SSE;
 use sequoia_openpgp::Cert;
 
@@ -94,14 +94,14 @@ impl SignRequest {
 
 pub struct State {
     pub sign_requests: Mutex<HashMap<ID, SignRequest>>,
-    pub key_gen_requests: Mutex<HashMap<ID, GeneratedKey>>,
+    pub key_gen_requests: Mutex<HashMap<KeyID, GeneratedKey>>,
 }
 
 impl Default for State {
     fn default() -> State {
         State {
             sign_requests: Mutex::new(HashMap::<ID, SignRequest>::new()),
-            key_gen_requests: Mutex::new(HashMap::<ID, GeneratedKey>::new()),
+            key_gen_requests: Mutex::new(HashMap::<KeyID, GeneratedKey>::new()),
         }
     }
 }
