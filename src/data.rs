@@ -25,13 +25,7 @@ impl TryFrom<&Cert> for ArmoredCert {
     type Error = SSE;
     fn try_from(result: &Cert) -> Result<ArmoredCert, Self::Error> {
         match result.armored().to_vec() {
-            Ok(vec_cert) => match String::from_utf8(vec_cert) {
-                Ok(string) => Ok(ArmoredCert(string)),
-                Err(e) => {
-                    let message = format!("armored text is not utf-8: {:?}", e);
-                    Err(SSE::Unexpected(message))
-                },
-            },
+            Ok(vec_cert) => Ok(ArmoredCert(String::from_utf8(vec_cert)?)),
             Err(e) => {
                 let message = format!("couldn't convert cert to vec: {:?}", e);
                 Err(SSE::Unexpected(message))
@@ -106,48 +100,83 @@ pub mod serde_vec_cert {
 
 }
 
-#[derive(Deserialize, Clone, Default)]
+static SHARE_MAGIC: [u8; 5] = [0x50, 0xa2, 0xe5, 0x19, 0x11];
+
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
-    data: Vec<u8>,
+    data: String,
 }
 
 impl Share {
     pub fn data(&self, verify: &Cert) -> Result<sharks::Share,SSE> {
-        let bytes = pgp::verify::verify_attached(verify, &self.data)?;
-        match bytes.as_slice().try_into() {
-            Ok(share) => Ok(share),
-            Err(str) => Err(SSE::Unexpected(str.to_owned())),
+        let bytes = pgp::verify::verify_attached(verify, self.data.as_bytes())?;
+        if bytes[0..=SHARE_MAGIC.len()].iter().zip(&SHARE_MAGIC).any(|(x,y)| x!=y) {
+            Err(SSE::BadMagic(bytes))
         }
+        else {
+            match bytes[SHARE_MAGIC.len()..].try_into() {
+                Ok(share) => Ok(share),
+                Err(str) => Err(SSE::Unexpected(str.to_owned())),
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct DistributedShare {
+    confirm_receipt: Vec<u8>,
+    signed: Share,
+}
+
+impl From<DistributedShare> for Share {
+    fn from(result: DistributedShare) -> Self {
+        result.signed
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptedShare {
-    encrypted: Encrypted,
-}
+pub struct EncryptedShare(Encrypted);
 
 impl Deref for EncryptedShare {
     type Target = Encrypted;
     fn deref(&self) -> &Self::Target {
-        &self.encrypted
+        &self.0
     }
 }
 
 impl EncryptedShare {
     pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SSE> {
-        let signed = pgp::sign(sign, &Vec::from(&data), true)?;
-        let encrypted = pgp::encrypt(encrypt, &signed)?;
-        Ok(EncryptedShare {
-            encrypted,
-        })
+        // TODO: confirm/enforce no-realloc here, once we get around to
+        // properly zeroing secrets (shares/privkeys)
+        let share_bytes = Vec::from(&data);
+
+        // append magic string for server-side verification that this
+        // isn't a random signed message
+        let mut with_magic: Vec<u8> = SHARE_MAGIC.to_vec();
+        with_magic.extend(share_bytes);
+
+        let signed = Share {
+            data: String::from_utf8(pgp::sign(sign, &with_magic, true)?)?,
+        };
+
+        // attach a random string in the encrypted (but not signed) part of
+        // the message, which the client will resubmit to confirm receipt
+        // of the newly-generated share, at which point it can be deleted
+        // from the server's memory
+        // TODO: randomize
+        let confirm_receipt = vec![0x00, 0x00, 0x00, 0x00];
+        let distrib = DistributedShare { confirm_receipt, signed };
+
+        let json = serde_json::to_string(&distrib).unwrap();
+        let encrypted = pgp::encrypt(encrypt, json.as_bytes())?;
+        Ok(EncryptedShare(encrypted))
     }
 
-    pub fn decrypt(self, decrypt: &Cert) -> Result<Share, SSE> {
-        Ok(Share {
-            data: self.encrypted.decrypt(decrypt)?,
-        })
+    pub fn decrypt(self, decrypt: &Cert) -> Result<DistributedShare, SSE> {
+        let decrypted = String::from_utf8(self.0.decrypt(decrypt)?)?;
+        Ok(serde_json::from_str(&decrypted).unwrap())
     }
 }
 
@@ -661,13 +690,13 @@ mod tests {
         let td = test_data::load_test_data_3_5();
 
         let encrypted_share = td.generated.shares[0].clone();
-        println!("encrypted: {}", encrypted_share.encrypted.0);
+        println!("encrypted: {}", encrypted_share.0.0);
 
         let decrypted = encrypted_share.decrypt(&td.approvers_priv()[0]).unwrap();
-        println!("decrypted: {}", String::from_utf8_lossy(&decrypted.data));
+        println!("decrypted: {:#?}", &decrypted);
 
         let verifier = td.generated.pubkey;
-        let verified = decrypted.data(&verifier).unwrap();
+        let verified = Share::from(decrypted).data(&verifier).unwrap();
         println!("verified: {}", String::from_utf8_lossy(&Vec::from(&verified)));
     }
 

@@ -74,7 +74,7 @@ mod tests {
             move |(share, key)| {
                 share.decrypt(&key).unwrap()
             }
-        ).collect();
+        ).map(|x| data::Share::from(x).clone()).collect();
         recover(td.shares_required, &shares_plaintext, &generated.pubkey).unwrap();
     }
 

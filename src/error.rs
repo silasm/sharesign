@@ -1,3 +1,4 @@
+use std::string::FromUtf8Error;
 use anyhow;
 use thiserror::Error;
 use super::data;
@@ -24,6 +25,13 @@ pub enum SharkSignError {
         #[from]
         source: std::io::Error,
     },
+    #[error("Ascii-armored string did not parse as valid UTF-8")]
+    ArmoredDecode {
+        #[from]
+        source: FromUtf8Error,
+    },
+    #[error("submitted share had valid signature but was missing magic byte prefix for server validation: {0:?}")]
+    BadMagic(Vec<u8>),
     #[error("Revoking key not listed in cert's revocation_keys")]
     NotRevoker,
     #[error("No revocation containing revoking key's fingerprint")]

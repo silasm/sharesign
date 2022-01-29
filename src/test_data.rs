@@ -40,7 +40,7 @@ impl TestData {
     pub fn decrypted_shares(&self) -> Vec<data::Share> {
         self.generated.shares.clone().into_iter().zip(self.approvers_priv().iter())
             .map(|(share, key)| {
-                share.decrypt(&key).unwrap()
+                share.decrypt(&key).unwrap().into()
             })
             .collect()
     }
