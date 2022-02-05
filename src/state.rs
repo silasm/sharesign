@@ -217,6 +217,49 @@ impl Hash for GeneratedKey {
     }
 }
 
+impl GeneratedKey {
+    /// returns the indeces (if any) of shares encrypted with the given KeyID
+    /// this is not a map as an approver cert may contain multiple keys with
+    /// which to encrypt the share (e.g. one per device the shareholder owns)
+    /// so we have a many-to-one (or even many-to-many, if the same key
+    /// decrypts multiple shares, which is possible) relationship.
+    pub fn lookup(&self, approver_id: &KeyID) -> Vec<(usize, &EncryptedShare, &Confirm)> {
+        // TODO: should probably return an iterator rather than a Vec
+        self.shares.iter().enumerate().flat_map(|(index, (share, confirm))| {
+            // NOTE: if for some reason we can't get the recipients
+            // (only reason would be failure to parse the PGP message we
+            // generated ourselves), the .ok()? here will just pass over
+            // that encrypted share.
+            if share.recipients().ok()?.iter().any(|id| *id == *approver_id) {
+                Some((index, share, confirm))
+            } else {
+                None
+            }
+        }).collect()
+    }
+
+    /// remove the first share encrypted by approver_id with confirmation
+    /// receipt approver_confirm
+    pub fn confirm_and_remove(&mut self, approver_id: &KeyID, approver_confirm: &Confirm) -> Result<(), SSE> {
+        let try_remove_index = self.lookup(approver_id).iter()
+            .find_map(|(index, _share, confirm)| {
+                if *confirm == approver_confirm {
+                    Some(*index)
+                }
+                else {
+                    None
+                }
+            });
+        if let Some(remove_index) = try_remove_index {
+            self.shares.swap_remove(remove_index);
+            Ok(())
+        }
+        else {
+            Err(SSE::Unexpected("confirm receipt + KeyID pair did not match any shares".to_string()))
+        }
+    }
+}
+
 pub struct State {
     pub sign_requests: Mutex<HashMap<ID, SignRequest>>,
     pub key_gen_requests: Mutex<HashMap<KeyID, GeneratedKey>>,

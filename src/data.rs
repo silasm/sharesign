@@ -140,7 +140,7 @@ impl From<DistributedShare> for Share {
 /// but unsigned part of a distributed share, that the shareholder
 /// can resubmit to confirm receipt of the share, allowing the server
 /// to remove the encrypted share from memory
-#[derive(Serialize, Deserialize, Clone, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Debug, PartialEq, Eq)]
 pub struct Confirm([u8; 6]);
 
 impl Default for Confirm {

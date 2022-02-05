@@ -72,22 +72,14 @@ async fn showkeys(state: web::Data<State>) -> Result<web::Json<Vec<data::KeyID>>
 async fn getshare(state: web::Data<State>, path: web::Path<(data::KeyID, data::KeyID)>) -> Result<web::Json<Vec<data::EncryptedShare>>, SSE> {
     let key_gen_requests = state.key_gen_requests.lock().unwrap();
     let (managed_id, approver_id) = &*path;
-    let shares = match key_gen_requests.get(managed_id) {
-        Some(gen) => Ok(&gen.shares),
+    let genkey = match key_gen_requests.get(managed_id) {
+        Some(gen) => Ok(gen),
         None => Err(SSE::ManagedKeyNotFound(managed_id.clone())),
     }?;
     let matching_shares: Vec<data::EncryptedShare> =
-        shares.iter().flat_map(|(share, _confirm)| {
-            // NOTE: if for some reason we can't get the recipients
-            // (only reason would be failure to parse the PGP message we
-            // generated ourselves), the .ok()? here will just pass over
-            // that encrypted share.
-            if share.recipients().ok()?.iter().any(|id| *id == *approver_id) {
-                Some(share.clone())
-            } else {
-                None
-            }
-        }).collect();
+        genkey.lookup(approver_id).iter()
+            .map(|(_, share, _)| (*share).clone())
+            .collect();
     if matching_shares.is_empty() {
         Err(SSE::ApproverNotFound(approver_id.clone()))
     } else {
