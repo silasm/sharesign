@@ -77,7 +77,7 @@ async fn getshare(state: web::Data<State>, path: web::Path<(data::KeyID, data::K
         None => Err(SSE::ManagedKeyNotFound(managed_id.clone())),
     }?;
     let matching_shares: Vec<data::EncryptedShare> =
-        shares.iter().flat_map(|share| {
+        shares.iter().flat_map(|(share, _confirm)| {
             // NOTE: if for some reason we can't get the recipients
             // (only reason would be failure to parse the PGP message we
             // generated ourselves), the .ok()? here will just pass over

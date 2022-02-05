@@ -22,12 +22,11 @@ pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyCo
     let sharks = Sharks(shares_needed);
     let dealer = sharks.dealer(&tsk_bytes);
 
-    let mut shares: Vec<data::EncryptedShare> = Vec::new();
+    let mut shares: Vec<(data::EncryptedShare, data::Confirm)> = Vec::new();
     for (cert, shark) in approvers.iter().zip(dealer.take(approvers.len())) {
         let confirm = data::Confirm::default();
-        // TODO: save confirm locally for confirmation that share has been
-        // received; do not publish
-        shares.push(data::EncryptedShare::new(shark, &key, cert, confirm)?);
+        let share = data::EncryptedShare::new(shark, &key, cert, confirm.clone())?;
+        shares.push((share, confirm));
     }
     Ok(data::GeneratedKey {
         pubkey: key.strip_secret_key_material(),
@@ -74,7 +73,7 @@ mod tests {
         assert_eq!(generated.shares.len(), td.approvers_pub.len());
 
         let shares_plaintext: Vec<data::Share> = generated.shares.into_iter().zip(td.approvers_priv().iter()).map(
-            move |(share, key)| {
+            move |((share, _), key)| {
                 share.decrypt(&key).unwrap()
             }
         ).map(|x| data::Share::from(x).clone()).collect();

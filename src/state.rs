@@ -7,10 +7,10 @@ use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 use std::convert::TryFrom;
 use std::collections::HashMap;
-use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer, Deserialize};
 use serde::ser::SerializeStruct;
 
-use super::data::{KeyConfig, Share, GeneratedKey, Signature, SignRequestSubmit, ArmoredCert, KeyID};
+use super::data::{KeyConfig, Share, GeneratedKey, Signature, SignRequestSubmit, ArmoredCert, KeyID, DistributedShare, Confirm};
 use super::error::SharkSignError as SSE;
 use sequoia_openpgp::Cert;
 
@@ -22,6 +22,12 @@ pub fn now() -> u64 {
 // TODO
 pub fn default_expire() -> u64 {
     0
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GeneratedShare {
+    distribute: DistributedShare,
+    confirm: Confirm,
 }
 
 #[derive(Clone)]

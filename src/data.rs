@@ -141,7 +141,7 @@ impl From<DistributedShare> for Share {
 /// but unsigned part of a distributed share, that the shareholder
 /// can resubmit to confirm receipt of the share, allowing the server
 /// to remove the encrypted share from memory
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Hash, Debug)]
 pub struct Confirm([u8; 6]);
 
 impl Default for Confirm {
@@ -377,7 +377,7 @@ impl KeyConfig {
 pub struct GeneratedKey {
     pub pubkey: Cert,
     pub config: KeyConfig,
-    pub shares: Vec<EncryptedShare>,
+    pub shares: Vec<(EncryptedShare, Confirm)>,
 }
 
 impl Serialize for GeneratedKey {
@@ -721,7 +721,7 @@ mod tests {
     fn test_decrypt_and_verify_share() {
         let td = test_data::load_test_data_3_5();
 
-        let encrypted_share = td.generated.shares[0].clone();
+        let (encrypted_share, _) = td.generated.shares[0].clone();
         println!("encrypted: {}", encrypted_share.0.0);
 
         let decrypted = encrypted_share.decrypt(&td.approvers_priv()[0]).unwrap();
