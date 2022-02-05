@@ -43,7 +43,7 @@ async fn showsign(state: web::Data<State>, id: web::Path<ID>) -> Result<web::Jso
     }
 }
 
-async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<web::Json<data::GeneratedKey>, SSE> {
+async fn newkey(state: web::Data<State>, key_gen_request: web::Json<data::KeyGenRequest>) -> Result<web::Json<state::GeneratedKey>, SSE> {
     let share_count = key_gen_request.approvers.len();
     if share_count > 255 {
         return Err(SSE::Config("Cannot generate >255 shares".to_owned()))
@@ -95,7 +95,7 @@ async fn getshare(state: web::Data<State>, path: web::Path<(data::KeyID, data::K
     }
 }
 
-async fn showkey(state: web::Data<State>, path: web::Path<data::KeyID>) -> Result<web::Json<data::GeneratedKey>, SSE> {
+async fn showkey(state: web::Data<State>, path: web::Path<data::KeyID>) -> Result<web::Json<state::GeneratedKey>, SSE> {
     let key_gen_requests = state.key_gen_requests.lock().unwrap();
     match key_gen_requests.get(&*path) {
         Some(gen) => Ok(web::Json(gen.clone())),
@@ -191,7 +191,7 @@ mod tests {
             .to_request();
         let resp = test::call_service(&mut app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
-        let generated: data::GeneratedKey = test::read_body_json(resp).await;
+        let generated: state::GeneratedKey = test::read_body_json(resp).await;
         assert_eq!(generated.shares.len(), 5);
 
         let req = test::TestRequest::get()

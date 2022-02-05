@@ -4,6 +4,7 @@ use std::fs::File;
 use std::path::Path;
 
 use sharesign::data::{self, KeyFlag, Validity, CipherSuite, Cert};
+use sharesign::state;
 
 #[path = "../test_data.rs"]
 mod test_data;

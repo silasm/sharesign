@@ -6,13 +6,14 @@ use serde::{Serialize, Deserialize};
 // binary crates), ensure that sharesign/data.rs is in scope in the
 // parent scope, or this will fail to resolve and break compilation.
 use super::data;
+use super::state;
 use data::Cert;
 
 use openpgp::serialize::SerializeInto;
 
 #[derive(Serialize, Deserialize)]
 pub struct TestData {
-    pub generated: data::GeneratedKey,
+    pub generated: state::GeneratedKey,
     pub shares_required: u8,
     #[serde(with="data::serde_vec_cert")]
     pub approvers_pub: Vec<Cert>,
@@ -23,7 +24,7 @@ pub struct TestData {
 
 impl TestData {
     #[allow(dead_code)]
-    pub fn new(generated: data::GeneratedKey, shares_required: u8, approvers_pub: Vec<Cert>) -> TestData {
+    pub fn new(generated: state::GeneratedKey, shares_required: u8, approvers_pub: Vec<Cert>) -> TestData {
         let approvers_priv = approvers_pub.iter().map(|x| {
             let vec = x.as_tsk().armored().to_vec().unwrap();
             String::from_utf8(vec).unwrap()

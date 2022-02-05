@@ -15,7 +15,7 @@ pub struct Signature {
     signature: Vec<u8>
 }
 
-pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<data::GeneratedKey, SSE> {
+pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyConfig) -> Result<state::GeneratedKey, SSE> {
     let key = pgp::generate(config)?;
     let tsk_bytes = key.as_tsk().to_vec()?;
 
@@ -28,7 +28,7 @@ pub fn generate(approvers: &[pgp::Cert], shares_needed: u8, config: &data::KeyCo
         let share = data::EncryptedShare::new(shark, &key, cert, confirm.clone())?;
         shares.push((share, confirm));
     }
-    Ok(data::GeneratedKey {
+    Ok(state::GeneratedKey {
         pubkey: key.strip_secret_key_material(),
         config: config.clone(),
         shares,
