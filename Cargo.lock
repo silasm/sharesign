@@ -1890,6 +1890,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "json",
+ "rand 0.8.4",
  "sequoia-openpgp",
  "serde",
  "serde_json",

@@ -3,6 +3,8 @@ use std::hash::{Hash, Hasher};
 use std::convert::{TryInto, TryFrom};
 use std::ops::Deref;
 use std::time::{Duration, SystemTime};
+use rand::Rng;
+
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Visitor, SeqAccess, MapAccess, Unexpected};
 use serde::ser::SerializeStruct;
@@ -125,13 +127,44 @@ impl Share {
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct DistributedShare {
-    confirm_receipt: Vec<u8>,
+    confirm_receipt: Confirm,
     signed: Share,
 }
 
 impl From<DistributedShare> for Share {
     fn from(result: DistributedShare) -> Self {
         result.signed
+    }
+}
+
+/// Wrapper type for 8 random bytes injected into the encrypted
+/// but unsigned part of a distributed share, that the shareholder
+/// can resubmit to confirm receipt of the share, allowing the server
+/// to remove the encrypted share from memory
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Confirm([u8; 6]);
+
+impl Default for Confirm {
+    fn default() -> Confirm {
+        let mut rng = rand::thread_rng();
+        Confirm::from_rng(&mut rng)
+    }
+}
+
+impl Deref for Confirm {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Confirm {
+    fn from_rng<T: Rng>(rng: &mut T) -> Confirm {
+        let mut bytes = [0u8; 6];
+        for p in &mut bytes {
+            *p = rng.gen();
+        }
+        Confirm(bytes)
     }
 }
 
@@ -147,7 +180,7 @@ impl Deref for EncryptedShare {
 }
 
 impl EncryptedShare {
-    pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert) -> Result<EncryptedShare, SSE> {
+    pub fn new(data: sharks::Share, sign: &Cert, encrypt: &Cert, confirm_receipt: Confirm) -> Result<EncryptedShare, SSE> {
         // TODO: confirm/enforce no-realloc here, once we get around to
         // properly zeroing secrets (shares/privkeys)
         let share_bytes = Vec::from(&data);
@@ -166,7 +199,6 @@ impl EncryptedShare {
         // of the newly-generated share, at which point it can be deleted
         // from the server's memory
         // TODO: randomize
-        let confirm_receipt = vec![0x00, 0x00, 0x00, 0x00];
         let distrib = DistributedShare { confirm_receipt, signed };
 
         let json = serde_json::to_string(&distrib).unwrap();
