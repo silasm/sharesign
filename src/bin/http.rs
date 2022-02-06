@@ -1,6 +1,7 @@
 #![cfg(feature = "http")]
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
 use serde_json::json;
+use serde::{Serialize, Deserialize};
 
 use sharesign::data;
 use sharesign::state;
@@ -87,6 +88,20 @@ async fn getshare(state: web::Data<State>, path: web::Path<(data::KeyID, data::K
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ConfirmRequest {
+    pub confirmation: data::Confirm
+}
+async fn confirm_share(state: web::Data<State>, path: web::Path<(data::KeyID, data::KeyID)>, json: web::Json<ConfirmRequest>) -> Result<web::Json<()>, SSE> {
+    let mut key_gen_requests = state.key_gen_requests.lock().unwrap();
+    let (managed_id, approver_id) = &*path;
+    let genkey = match key_gen_requests.get_mut(managed_id) {
+        Some(gen) => Ok(gen),
+        None => Err(SSE::ManagedKeyNotFound(managed_id.clone())),
+    }?;
+    Ok(web::Json(genkey.confirm_and_remove(approver_id, &json.confirmation)?))
+}
+
 async fn showkey(state: web::Data<State>, path: web::Path<data::KeyID>) -> Result<web::Json<state::GeneratedKey>, SSE> {
     let key_gen_requests = state.key_gen_requests.lock().unwrap();
     match key_gen_requests.get(&*path) {
@@ -111,7 +126,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api/keys/{managed_fp}/")
                     .route("/", web::get().to(showkey))
                     .route("/share/{approver_fp}", web::get().to(getshare))
-                    // TODO: .route("/share/{approver_fp}/confirm", web::post().to(confirm_share))
+                    .route("/share/{approver_fp}/confirm", web::post().to(confirm_share))
                     // TODO: .route("/", web::put().to(updatekey))
             )
             .service(
@@ -174,9 +189,11 @@ mod tests {
                 .app_data(state.clone())
                 .route("/api/keys/", web::post().to(newkey))
                 .route("/api/keys/", web::get().to(showkeys))
-                .route("/api/keys/{managed_fp}/share/{approver_fp}", web::get().to(getshare)),
+                .route("/api/keys/{managed_fp}/share/{approver_fp}", web::get().to(getshare))
+                .route("/api/keys/{managed_fp}/share/{approver_fp}/confirm", web::post().to(confirm_share))
         ).await;
 
+        // generate a new key
         let req = test::TestRequest::post()
             .uri("/api/keys/")
             .set_json(&keygen)
@@ -186,6 +203,7 @@ mod tests {
         let generated: state::GeneratedKey = test::read_body_json(resp).await;
         assert_eq!(generated.shares.len(), 5);
 
+        // list the generated keys
         let req = test::TestRequest::get()
             .uri("/api/keys/")
             .to_request();
@@ -194,6 +212,7 @@ mod tests {
         let ids: Vec<data::KeyID> = test::read_body_json(resp).await;
         assert_eq!(ids.len(), 1);
 
+        // get and decrypt the share corresponding to the first approver
         let policy = StandardPolicy::new();
         let approver_id = td.approvers_pub[0].keys()
             .with_policy(&policy, None)
@@ -208,6 +227,29 @@ mod tests {
         let shares: Vec<data::EncryptedShare> = test::read_body_json(resp).await;
         assert_eq!(shares.len(), 1);
         println!("{:#?}", shares[0].0);
-        let _decrypted = shares[0].clone().decrypt(&td.approvers_priv()[0]).unwrap();
+        let decrypted = shares[0].clone().decrypt(&td.approvers_priv()[0]).unwrap();
+
+        // confirm receipt and decryption of the share by sending back
+        // the random bytes attached to it
+        println!("{:?}", &decrypted.confirm_receipt);
+        let confirmation = ConfirmRequest {
+            confirmation: decrypted.confirm_receipt,
+        };
+        let req = test::TestRequest::post()
+            .uri(&format!("/api/keys/{}/share/{}/confirm", ids[0].to_hex(), approver_id.to_hex()))
+            .set_json(&confirmation)
+            .to_request();
+        let resp = test::call_service(&mut app, req).await;
+        if resp.status() != http::StatusCode::OK {
+            println!("{:#?}", test::read_body(resp).await);
+            assert!(false);
+        }
+
+        // share is now removed from state, so requesting it again fails
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
+            .to_request();
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 }

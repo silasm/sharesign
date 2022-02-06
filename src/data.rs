@@ -126,8 +126,8 @@ impl Share {
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct DistributedShare {
-    confirm_receipt: Confirm,
-    signed: Share,
+    pub confirm_receipt: Confirm,
+    pub signed: Share,
 }
 
 impl From<DistributedShare> for Share {
