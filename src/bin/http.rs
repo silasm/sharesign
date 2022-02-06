@@ -193,14 +193,6 @@ mod tests {
                 .route("/api/keys/{managed_fp}/share/{approver_fp}/confirm", web::post().to(confirm_share))
         ).await;
 
-        let approver_id = {
-            let policy = StandardPolicy::new();
-            td.approvers_pub[0].keys()
-                .with_policy(&policy, None)
-                .supported().alive().revoked(false)
-                .for_transport_encryption().into_iter().next().unwrap().keyid()
-        };
-
         // generate a new key
         let generated: state::GeneratedKey = {
             let req = test::TestRequest::post()
@@ -224,42 +216,58 @@ mod tests {
         };
         assert_eq!(ids.len(), 1);
 
-        // get and decrypt the share corresponding to the first approver
-        let shares: Vec<data::EncryptedShare> = {
-    
-            let req = test::TestRequest::get()
-                .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
-                .to_request();
-            let resp = test::call_service(&mut app, req).await;
-            assert_eq!(resp.status(), http::StatusCode::OK);
-            test::read_body_json(resp).await
-        };
-        assert_eq!(shares.len(), 1);
-        println!("{:#?}", shares[0].0);
-        let decrypted = shares[0].clone().decrypt(&td.approvers_priv()[0]).unwrap();
-
-        // confirm receipt and decryption of the share by sending back
-        // the random bytes attached to it
-        {
-            let confirmation = ConfirmRequest {
-                confirmation: decrypted.confirm_receipt,
+        let privcerts = td.approvers_priv();
+        let zipped = td.approvers_pub.iter().zip(privcerts.iter());
+        let mut shares = Vec::<data::Share>::new();
+        for (pubcert, privcert) in zipped {
+            let approver_id = {
+                let policy = StandardPolicy::new();
+                pubcert.keys()
+                    .with_policy(&policy, None)
+                    .supported().alive().revoked(false)
+                    .for_transport_encryption().into_iter().next().unwrap().keyid()
             };
-            let req = test::TestRequest::post()
-                .uri(&format!("/api/keys/{}/share/{}/confirm", ids[0].to_hex(), approver_id.to_hex()))
-                .set_json(&confirmation)
-                .to_request();
-            let resp = test::call_service(&mut app, req).await;
-            if resp.status() != http::StatusCode::OK {
-                println!("{:#?}", test::read_body(resp).await);
-                assert!(false);
+
+            // get and decrypt the share corresponding to the approver
+            let matching_shares: Vec<data::EncryptedShare> = {
+        
+                let req = test::TestRequest::get()
+                    .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
+                    .to_request();
+                let resp = test::call_service(&mut app, req).await;
+                assert_eq!(resp.status(), http::StatusCode::OK);
+                test::read_body_json(resp).await
+            };
+            assert_eq!(matching_shares.len(), 1);
+            let decrypted = matching_shares[0].clone().decrypt(privcert).unwrap();
+
+            // confirm receipt and decryption of the share by sending back
+            // the random bytes attached to it
+            {
+                let confirmation = ConfirmRequest {
+                    confirmation: decrypted.confirm_receipt,
+                };
+                let req = test::TestRequest::post()
+                    .uri(&format!("/api/keys/{}/share/{}/confirm", ids[0].to_hex(), approver_id.to_hex()))
+                    .set_json(&confirmation)
+                    .to_request();
+                let resp = test::call_service(&mut app, req).await;
+                if resp.status() != http::StatusCode::OK {
+                    println!("{:#?}", test::read_body(resp).await);
+                    assert!(false);
+                }
             }
-    
+
             // share is now removed from state, so requesting it again fails
-            let req = test::TestRequest::get()
-                .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
-                .to_request();
-            let resp = test::call_service(&mut app, req).await;
-            assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+            {
+                let req = test::TestRequest::get()
+                    .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
+                    .to_request();
+                let resp = test::call_service(&mut app, req).await;
+                assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+            }
+
+            shares.push(decrypted.signed);
         }
     }
 }
