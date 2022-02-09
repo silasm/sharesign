@@ -141,7 +141,10 @@ impl From<DistributedShare> for Share {
 /// can resubmit to confirm receipt of the share, allowing the server
 /// to remove the encrypted share from memory
 #[derive(Serialize, Deserialize, Clone, Hash, Debug, PartialEq, Eq)]
-pub struct Confirm([u8; 6]);
+pub struct Confirm(
+    #[serde(with = "hex")]
+    [u8; 6]
+);
 
 impl Default for Confirm {
     fn default() -> Confirm {
