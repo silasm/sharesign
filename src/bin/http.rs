@@ -110,7 +110,7 @@ async fn showkey(state: web::Data<State>, path: web::Path<data::KeyID>) -> Resul
     }
 }
 
-fn app<T>(state: web::Data<State>) -> actix_web::App<T, actix_web::dev::Body> {
+fn app(state: web::Data<State>) -> actix_web::App<actix_web::app_service::AppEntry, actix_web::dev::Body> {
     App::new()
         .app_data(state.clone())
         .service(
