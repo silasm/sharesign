@@ -1,5 +1,7 @@
 #![cfg(feature = "http")]
+use std::fmt::Debug;
 use actix_web::{ web, App, HttpResponse, HttpServer, Responder };
+use actix_service::IntoServiceFactory;
 use serde_json::json;
 use serde::{Serialize, Deserialize};
 
@@ -110,36 +112,41 @@ async fn showkey(state: web::Data<State>, path: web::Path<data::KeyID>) -> Resul
     }
 }
 
+fn app(state: web::Data<State>) -> impl actix_service::ServiceFactory<
+    Config = actix_web::dev::AppConfig,
+    Request = actix_http::Request,
+    Error = actix_web::Error,
+    InitError = (),
+    Response = actix_web::dev::ServiceResponse<actix_web::dev::Body>,
+>
+{
+    use tracing_actix_web::TracingLogger;
+
+    App::new()
+        .app_data(state.clone())
+        .wrap(TracingLogger)
+        .service(
+            web::scope("/api/keys")
+                .route("/", web::post().to(newkey))
+                .route("/", web::get().to(showkeys))
+                .route("/{managed_fp}/", web::get().to(showkey))
+                // TODO: .route("/{managed_fp}/", web::put().to(updatekey))
+                .route("/{managed_fp}/share/{approver_fp}", web::get().to(getshare))
+                .route("/{managed_fp}/share/{approver_fp}/confirm", web::post().to(confirm_share))
+                .route("/{managed_fp}/signatures/", web::post().to(startsign))
+                .route("/{managed_fp}/signatures/", web::get().to(showsigns))
+                .route("/{managed_fp}/signatures/{hash}", web::put().to(submitshare))
+                .route("/{managed_fp}/signatures/{hash}", web::get().to(showsign))
+                // TODO: .route("/{managed_fp}/signatures/{hash}/approvers", web::get().to(showapprovers))
+        ).into_factory()
+}
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     let state = web::Data::new(State::default());
-    HttpServer::new(move || {
-        App::new()
-            .app_data(state.clone())
-            .service(
-                web::scope("/api/keys")
-                    .route("/", web::post().to(newkey))
-                    .route("/", web::get().to(showkeys))
-            )
-            .service(
-                web::scope("/api/keys/{managed_fp}/")
-                    .route("/", web::get().to(showkey))
-                    .route("/share/{approver_fp}", web::get().to(getshare))
-                    .route("/share/{approver_fp}/confirm", web::post().to(confirm_share))
-                    // TODO: .route("/", web::put().to(updatekey))
-            )
-            .service(
-                web::scope("/api/keys/{managed_fp}/signatures/")
-                    .route("/", web::post().to(startsign))
-                    .route("/", web::get().to(showsigns))
-                    .route("/{hash}", web::put().to(submitshare))
-                    .route("/{hash}", web::get().to(showsign))
-                    // TODO: .route("/{hash}/approvers", web::get().to(showapprovers))
-            )
 
-    })
-    .bind("127.0.0.1:9000")?
+    HttpServer::new(move || {app(state.clone())})
+    .bind("127.0.0.1:8080")?
     .run()
     .await
 }
@@ -182,16 +189,13 @@ mod tests {
         });
         let _deserialized: data::KeyGenRequest =
             serde_json::from_value(keygen.clone()).unwrap();
-        let state = web::Data::new(State::default());
 
-        let mut app = test::init_service(
-            App::new()
-                .app_data(state.clone())
-                .route("/api/keys/", web::post().to(newkey))
-                .route("/api/keys/", web::get().to(showkeys))
-                .route("/api/keys/{managed_fp}/share/{approver_fp}", web::get().to(getshare))
-                .route("/api/keys/{managed_fp}/share/{approver_fp}/confirm", web::post().to(confirm_share))
-        ).await;
+        let state = web::Data::new(State::default());
+        env_logger::init_from_env(
+            env_logger::Env::default().default_filter_or("info")
+        );
+
+        let mut app = test::init_service(app(state)).await;
 
         // generate a new key
         let generated: state::GeneratedKey = {
@@ -200,7 +204,7 @@ mod tests {
                 .set_json(&keygen)
                 .to_request();
             let resp = test::call_service(&mut app, req).await;
-            assert_eq!(resp.status(), http::StatusCode::OK);
+            assert_eq!(resp.status(), http::StatusCode::OK, "{:?}", test::read_body(resp).await);
             test::read_body_json(resp).await
         };
         assert_eq!(generated.shares.len(), 5);
@@ -211,7 +215,7 @@ mod tests {
                 .uri("/api/keys/")
                 .to_request();
             let resp = test::call_service(&mut app, req).await;
-            assert_eq!(resp.status(), http::StatusCode::OK);
+            assert_eq!(resp.status(), http::StatusCode::OK, "{:?}", test::read_body(resp).await);
             test::read_body_json(resp).await
         };
         assert_eq!(ids.len(), 1);
@@ -230,12 +234,11 @@ mod tests {
 
             // get and decrypt the share corresponding to the approver
             let matching_shares: Vec<data::EncryptedShare> = {
-        
                 let req = test::TestRequest::get()
                     .uri(&format!("/api/keys/{}/share/{}", ids[0].to_hex(), approver_id.to_hex()))
                     .to_request();
                 let resp = test::call_service(&mut app, req).await;
-                assert_eq!(resp.status(), http::StatusCode::OK);
+                assert_eq!(resp.status(), http::StatusCode::OK, "{:?}", test::read_body(resp).await);
                 test::read_body_json(resp).await
             };
             assert_eq!(matching_shares.len(), 1);
@@ -252,10 +255,7 @@ mod tests {
                     .set_json(&confirmation)
                     .to_request();
                 let resp = test::call_service(&mut app, req).await;
-                if resp.status() != http::StatusCode::OK {
-                    println!("{:#?}", test::read_body(resp).await);
-                    assert!(false);
-                }
+                assert_eq!(resp.status(), http::StatusCode::OK, "{:?}", test::read_body(resp).await);
             }
 
             // share is now removed from state, so requesting it again fails

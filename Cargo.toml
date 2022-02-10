@@ -7,13 +7,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-http = ["actix-web", "actix-rt", "json"]
+http = ["actix-web", "actix-rt", "actix-service", "actix-http", "json", "tracing-actix-web"]
 
 [dependencies]
 sharks = "0.5"
 sequoia-openpgp = "1.6"
 actix-web = { version = "3.3", optional = true }
 actix-rt = { version = "2.3", optional = true }
+actix-service = { version = "1.0.6", optional = true }
+actix-http = { version = "2.2.1", optional = true }
+tracing-actix-web = { version = "0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.8"
@@ -21,3 +24,6 @@ json = { version = "0.12", optional = true }
 anyhow = "1.0"
 thiserror = "1.0"
 hex = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.2.19"
+env_logger = "0.9"
