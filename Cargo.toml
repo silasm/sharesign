@@ -13,7 +13,7 @@ http = ["actix-web", "actix-rt", "actix-service", "actix-http", "json", "tracing
 sharks = "0.5"
 sequoia-openpgp = "1.6"
 actix-web = { version = "3.3", optional = true }
-actix-rt = { version = "2.3", optional = true }
+actix-rt = { version = "1", optional = true }
 actix-service = { version = "1.0.6", optional = true }
 actix-http = { version = "2.2.1", optional = true }
 tracing-actix-web = { version = "0.2", optional = true }

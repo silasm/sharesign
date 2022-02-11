@@ -141,7 +141,7 @@ fn app(state: web::Data<State>) -> impl actix_service::ServiceFactory<
         ).into_factory()
 }
 
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let state = web::Data::new(State::default());
 
